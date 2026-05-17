@@ -87,7 +87,7 @@ export const recallSparks = async (
 
   let active = await listSparks(token, 'active')
   if (tags && tags.length > 0) {
-    active = active.filter((s) => s.tags.some((t) => tags.includes(t)))
+    active = active.filter((s) => (s.tags ?? []).some((t) => tags.includes(t)))
   }
   if (active.length === 0) return []
 

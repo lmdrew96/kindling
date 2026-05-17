@@ -171,8 +171,10 @@ const TOOLS = [
 
 type ToolArgs = Record<string, unknown>
 
-const formatSpark = (spark: { id: string; content: string; tags: string[]; status: string; surface_count: number; created_at: number }) =>
-  `[${spark.id}] (${spark.status}) ${spark.content}${spark.tags.length ? ` [${spark.tags.join(', ')}]` : ''} — surfaced ${spark.surface_count}×`
+const formatSpark = (spark: { id: string; content: string; tags?: string[]; status: string; surface_count: number; created_at: number }) => {
+  const tags = spark.tags ?? []
+  return `[${spark.id}] (${spark.status}) ${spark.content}${tags.length ? ` [${tags.join(', ')}]` : ''} — surfaced ${spark.surface_count}×`
+}
 
 async function handleToolCall(token: string, name: string, args: ToolArgs): Promise<unknown> {
   switch (name) {
@@ -254,12 +256,13 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       const content = args.content as string | undefined
       const tags = args.tags as string[] | undefined
       if (!content && !tags) return text('Provide at least one of: content, tags.')
-      const updates: Partial<import('@/lib/types').Spark> = {}
-      if (content) updates.content = content
-      if (tags) updates.tags = tags
-      const updated = await updateSpark(token, spark_id, updates)
+      const updated = await updateSpark(token, spark_id, {
+        ...(content ? { content } : {}),
+        ...(tags ? { tags } : {}),
+      })
       if (!updated) return text(`Spark ${spark_id} not found.`)
-      return text(`Updated [${spark_id}]: ${updated.content}${updated.tags.length ? ` [${updated.tags.join(', ')}]` : ''}`)
+      const updatedTags = updated.tags ?? []
+      return text(`Updated [${spark_id}]: ${updated.content}${updatedTags.length ? ` [${updatedTags.join(', ')}]` : ''}`)
     }
 
     case 'kindling_revive': {
