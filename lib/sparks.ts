@@ -5,19 +5,6 @@ import type { Spark, SparkStatus } from './types'
 const DAY_MS = 1000 * 60 * 60 * 24
 const DECAY_THRESHOLD_DAYS = 180
 
-// ─── Serialization ───────────────────────────────────────────────────────────
-
-const serialize = (spark: Spark): string => JSON.stringify(spark)
-
-const deserialize = (raw: string | null): Spark | null => {
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as Spark
-  } catch {
-    return null
-  }
-}
-
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
 export const createSpark = async (
@@ -37,13 +24,12 @@ export const createSpark = async (
     status: 'active',
     cold_at: null,
   }
-  await redis.hset(indexKey(token), { [spark.id]: serialize(spark) })
+  await redis.hset(indexKey(token), { [spark.id]: spark })
   return spark
 }
 
 export const getSpark = async (token: string, id: string): Promise<Spark | null> => {
-  const raw = await redis.hget<string>(indexKey(token), id)
-  return deserialize(raw ?? null)
+  return redis.hget<Spark>(indexKey(token), id)
 }
 
 export const updateSpark = async (
@@ -54,16 +40,14 @@ export const updateSpark = async (
   const existing = await getSpark(token, id)
   if (!existing) return null
   const updated: Spark = { ...existing, ...updates, id }
-  await redis.hset(indexKey(token), { [id]: serialize(updated) })
+  await redis.hset(indexKey(token), { [id]: updated })
   return updated
 }
 
 export const listSparks = async (token: string, status?: SparkStatus): Promise<Spark[]> => {
-  const all = await redis.hgetall<Record<string, string>>(indexKey(token))
+  const all = await redis.hgetall<Record<string, Spark>>(indexKey(token))
   if (!all) return []
-  const sparks = Object.values(all)
-    .map((raw) => deserialize(raw))
-    .filter((s): s is Spark => s !== null)
+  const sparks = Object.values(all).filter((s): s is Spark => s !== null)
   return status ? sparks.filter((s) => s.status === status) : sparks
 }
 
