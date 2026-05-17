@@ -9,6 +9,7 @@ export interface Spark {
   surface_count: number
   promoted_to: string | null
   promoted_at: number | null
+  promoted_notes: string | null
   status: SparkStatus
   cold_at: number | null
 }

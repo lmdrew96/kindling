@@ -5,6 +5,7 @@ import {
   updateSpark,
   listSparks,
   archiveSpark,
+  reviveSpark,
   recallSparks,
   runDecay,
 } from '@/lib/sparks'
@@ -57,6 +58,11 @@ const TOOLS = [
           type: 'string',
           description: 'Optional context hint about the current session or focus area.',
         },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter recall to sparks matching ANY of these tags (e.g. ["substack", "writing"]).',
+        },
       },
     },
   },
@@ -70,6 +76,10 @@ const TOOLS = [
         target: {
           type: 'string',
           description: 'Where it was promoted to (e.g. "ControlledChaos", "ThreadBrain", a URL, etc.).',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional provenance notes (e.g. "became the opening of Vertexism Section V").',
         },
       },
       required: ['spark_id', 'target'],
@@ -93,13 +103,17 @@ const TOOLS = [
   },
   {
     name: 'kindling_search',
-    description: 'Search sparks by content.',
+    description: 'Search sparks by content and/or tags. At least one of query or tags is required.',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Text to search for in spark content.' },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to sparks matching ANY of these tags.',
+        },
       },
-      required: ['query'],
     },
   },
   {
@@ -123,6 +137,34 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'kindling_update',
+    description: 'Edit the content and/or tags of an existing spark. At least one of content or tags is required.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spark_id: { type: 'string', description: 'ID of the spark to update.' },
+        content: { type: 'string', description: 'New content for the spark.' },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'New tags for the spark (replaces existing tags).',
+        },
+      },
+      required: ['spark_id'],
+    },
+  },
+  {
+    name: 'kindling_revive',
+    description: 'Move a cold spark back to active status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spark_id: { type: 'string', description: 'ID of the cold spark to revive.' },
+      },
+      required: ['spark_id'],
+    },
+  },
 ]
 
 // ─── Tool handlers ───────────────────────────────────────────────────────────
@@ -144,8 +186,9 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
 
     case 'kindling_recall': {
       const limit = typeof args.limit === 'number' ? args.limit : 5
-      const sparks = await recallSparks(token, limit)
-      if (sparks.length === 0) return text('No active sparks to recall.')
+      const tags = args.tags as string[] | undefined
+      const sparks = await recallSparks(token, limit, tags)
+      if (sparks.length === 0) return text(tags?.length ? `No active sparks matching tags: ${tags.join(', ')}.` : 'No active sparks to recall.')
       const lines = sparks.map(formatSpark).join('\n')
       return text(`Recalled ${sparks.length} spark${sparks.length !== 1 ? 's' : ''}:\n\n${lines}`)
     }
@@ -153,13 +196,15 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     case 'kindling_promote': {
       const spark_id = args.spark_id as string
       const target = args.target as string
+      const notes = args.notes as string | undefined
       const updated = await updateSpark(token, spark_id, {
         promoted_to: target,
         promoted_at: Date.now(),
+        promoted_notes: notes ?? null,
         status: 'archived',
       })
       if (!updated) return text(`Spark ${spark_id} not found.`)
-      return text(`Promoted [${spark_id}] → ${target}`)
+      return text(`Promoted [${spark_id}] → ${target}${notes ? `\nNotes: ${notes}` : ''}`)
     }
 
     case 'kindling_list': {
@@ -174,10 +219,17 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     }
 
     case 'kindling_search': {
-      const query = (args.query as string).toLowerCase()
+      const query = (args.query as string | undefined)?.toLowerCase()
+      const tags = args.tags as string[] | undefined
+      if (!query && (!tags || tags.length === 0)) return text('Provide at least one of: query, tags.')
       const all = await listSparks(token)
-      const matches = all.filter((s) => s.content.toLowerCase().includes(query))
-      if (matches.length === 0) return text(`No sparks matching "${args.query as string}".`)
+      const matches = all.filter((s) => {
+        const contentOk = query ? s.content.toLowerCase().includes(query) : true
+        const tagsOk = tags?.length ? s.tags.some((t) => tags.includes(t)) : true
+        if (query && tags?.length) return contentOk && tagsOk
+        return query ? contentOk : tagsOk
+      })
+      if (matches.length === 0) return text('No sparks match that search.')
       return text(matches.map(formatSpark).join('\n'))
     }
 
@@ -195,6 +247,28 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       const slice = cold.slice(0, limit)
       if (slice.length === 0) return text('No cold sparks. Everything is still warm.')
       return text(`${slice.length} cold spark${slice.length !== 1 ? 's' : ''} waiting:\n\n${slice.map(formatSpark).join('\n')}`)
+    }
+
+    case 'kindling_update': {
+      const spark_id = args.spark_id as string
+      const content = args.content as string | undefined
+      const tags = args.tags as string[] | undefined
+      if (!content && !tags) return text('Provide at least one of: content, tags.')
+      const updates: Partial<import('@/lib/types').Spark> = {}
+      if (content) updates.content = content
+      if (tags) updates.tags = tags
+      const updated = await updateSpark(token, spark_id, updates)
+      if (!updated) return text(`Spark ${spark_id} not found.`)
+      return text(`Updated [${spark_id}]: ${updated.content}${updated.tags.length ? ` [${updated.tags.join(', ')}]` : ''}`)
+    }
+
+    case 'kindling_revive': {
+      const spark_id = args.spark_id as string
+      const spark = await getSpark(token, spark_id)
+      if (!spark) return text(`Spark ${spark_id} not found.`)
+      if (spark.status !== 'cold') return text(`Spark ${spark_id} is ${spark.status}, not cold.`)
+      await reviveSpark(token, spark_id)
+      return text(`Revived [${spark_id}] — back in the fire.`)
     }
 
     default:

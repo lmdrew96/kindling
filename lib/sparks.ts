@@ -21,6 +21,7 @@ export const createSpark = async (
     surface_count: 0,
     promoted_to: null,
     promoted_at: null,
+    promoted_notes: null,
     status: 'active',
     cold_at: null,
   }
@@ -55,6 +56,10 @@ export const archiveSpark = async (token: string, id: string): Promise<Spark | n
   return updateSpark(token, id, { status: 'archived' })
 }
 
+export const reviveSpark = async (token: string, id: string): Promise<Spark | null> => {
+  return updateSpark(token, id, { status: 'active', cold_at: null })
+}
+
 // ─── Recall algorithm ────────────────────────────────────────────────────────
 
 const scoreSpark = (spark: Spark): number => {
@@ -73,10 +78,17 @@ const scoreSpark = (spark: Spark): number => {
   return ageScore + neglectScore + unusedScore
 }
 
-export const recallSparks = async (token: string, limit: number = 5): Promise<Spark[]> => {
+export const recallSparks = async (
+  token: string,
+  limit: number = 5,
+  tags?: string[]
+): Promise<Spark[]> => {
   await runDecay(token)
 
-  const active = await listSparks(token, 'active')
+  let active = await listSparks(token, 'active')
+  if (tags && tags.length > 0) {
+    active = active.filter((s) => s.tags.some((t) => tags.includes(t)))
+  }
   if (active.length === 0) return []
 
   const scored = active
