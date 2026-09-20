@@ -23,6 +23,7 @@ import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
+import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -91,6 +92,31 @@ async function savePrefs(token: string, decayThresholdDays: number): Promise<voi
   if (!res.ok) throw new Error('Failed to save settings')
 }
 
+async function promoteApi(
+  token: string,
+  id: string,
+  target: string,
+  notes: string | null
+): Promise<Spark> {
+  const res = await fetch(`/api/promote?token=${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spark_id: id, target, notes }),
+  })
+  if (!res.ok) throw new Error('Failed to promote spark')
+  return res.json()
+}
+
+async function recallApi(token: string, limit = 5): Promise<Spark[]> {
+  const res = await fetch(`/api/recall?token=${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit }),
+  })
+  if (!res.ok) throw new Error('Failed to recall sparks')
+  return res.json()
+}
+
 async function deleteApi(token: string, id: string): Promise<void> {
   const res = await fetch(`/api/sparks?token=${token}&id=${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete spark')
@@ -110,6 +136,8 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
 
 function SparkCard({
   spark,
+  onEdit,
+  onPromote,
   onSnooze,
   onUnsnooze,
   onToggleStanding,
@@ -122,6 +150,8 @@ function SparkCard({
   onDelete,
 }: {
   spark: Spark
+  onEdit?: () => void
+  onPromote?: () => void
   onSnooze?: (days: number) => void
   onUnsnooze?: () => void
   onToggleStanding?: () => void
@@ -289,6 +319,25 @@ function SparkCard({
               className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
             >
               Unarchive
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
+            >
+              Edit
+            </button>
+          )}
+          {onPromote && (
+            <button
+              type="button"
+              onClick={onPromote}
+              title="Record that this became something real"
+              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+            >
+              Promote
             </button>
           )}
           {onToggleStanding && (
@@ -533,6 +582,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<Spark | null>(null)
   const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
+  const [editing, setEditing] = useState<Spark | null>(null)
+  const [promoting, setPromoting] = useState<Spark | null>(null)
+  const [recalled, setRecalled] = useState<Spark[] | null>(null)
+  const [recalling, setRecalling] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -754,6 +807,66 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }
 
+  const handleEdit = async (
+    spark: Spark,
+    patch: { title: string | null; content: string; tags: string[] }
+  ) => {
+    setEditing(null)
+    const previous = sparks
+    setSparks((prev) => prev.map((s) => (s.id === spark.id ? { ...s, ...patch } : s)))
+    try {
+      await patchSparkApi(token, spark.id, patch)
+      showToast('Spark updated.')
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't save that edit.")
+    }
+  }
+
+  const handlePromote = async (spark: Spark, target: string, notes: string | null) => {
+    setPromoting(null)
+    const previous = sparks
+    setSparks((prev) =>
+      prev.map((s) =>
+        s.id === spark.id
+          ? {
+              ...s,
+              promoted_to: target,
+              promoted_at: Date.now(),
+              promoted_notes: notes,
+              status: 'archived' as SparkStatus,
+            }
+          : s
+      )
+    )
+    try {
+      const saved = await promoteApi(token, spark.id, target, notes)
+      // Take the server's record, so promoted_at is its clock rather than ours.
+      setSparks((prev) => prev.map((s) => (s.id === saved.id ? saved : s)))
+      showToast(`Promoted → ${target}`)
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't promote that.")
+    }
+  }
+
+  /** Recall mutates, so this is an explicit action rather than a passive view. */
+  const handleRecall = async () => {
+    setRecalling(true)
+    try {
+      const picked = await recallApi(token, 5)
+      setRecalled(picked)
+      if (picked.length === 0) showToast('Nothing active to recall right now.')
+      // Surfacing changed counts and clocks server-side; re-read so the
+      // dashboard's ranking reflects it.
+      await load()
+    } catch {
+      showToast("Couldn't recall right now.")
+    } finally {
+      setRecalling(false)
+    }
+  }
+
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -852,6 +965,23 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   return (
     <main className="min-h-screen bg-bg text-fg">
+      {editing && (
+        <EditSparkDialog
+          spark={editing}
+          knownTags={knownTags}
+          onCancel={() => setEditing(null)}
+          onSave={(patch) => void handleEdit(editing, patch)}
+        />
+      )}
+
+      {promoting && (
+        <PromoteDialog
+          spark={promoting}
+          onCancel={() => setPromoting(null)}
+          onPromote={(target, notes) => void handlePromote(promoting, target, notes)}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmDeleteDialog
           spark={confirmDelete}
@@ -903,6 +1033,15 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => void handleRecall()}
+              disabled={recalling}
+              title="Show the sparks most in need of attention"
+              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {recalling ? 'Recalling…' : 'Recall'}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowStats((v) => !v)}
               aria-expanded={showStats}
               className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
@@ -933,6 +1072,47 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
           </div>
         </div>
+
+        {/* Recall results. Kept as a distinct panel rather than reordering the
+            list, so it's clear these are the ones the algorithm picked — and
+            that showing them reset their clocks. */}
+        {recalled && recalled.length > 0 && (
+          <section
+            aria-label="Recalled sparks"
+            className="rounded-xl border border-primary/40 bg-primary/5 p-4 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-display text-sm font-bold text-fg">
+                  Most in need of attention
+                </h2>
+                <p className="text-xs text-fg-subtle">
+                  Ranked by age, neglect and how rarely they&rsquo;ve surfaced. Showing them
+                  resets their decay clocks.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecalled(null)}
+                className="text-xs text-fg-subtle hover:text-fg transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+            <div className="space-y-3">
+              {recalled.map((spark) => (
+                <SparkCard
+                  key={`recalled-${spark.id}`}
+                  spark={spark}
+                  onEdit={() => setEditing(spark)}
+                  onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
+                  onArchive={() => handleArchive(spark)}
+                  onSnooze={(d) => void handleSnooze(spark, d)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {showStats && sparks.length > 0 && (
           <StatsPanel
@@ -1110,6 +1290,8 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 selected={selected.has(spark.id)}
                 onToggleSelected={() => toggleSelected(spark.id)}
                 onDelete={() => setConfirmDelete(spark)}
+                onEdit={() => setEditing(spark)}
+                onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
                 onToggleStanding={() => void handleToggleStanding(spark)}
                 onSnooze={
                   spark.status === 'active' ? (d) => void handleSnooze(spark, d) : undefined

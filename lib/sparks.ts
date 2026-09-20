@@ -137,7 +137,9 @@ export const recallSparks = async (
     .slice(0, limit)
 
   const now = Date.now()
-  await Promise.all(
+  // Return the post-update records, not the ones we scored — otherwise callers
+  // render "surfaced 0x" for a spark this very call just surfaced.
+  const updated = await Promise.all(
     scored.map(({ spark }) =>
       updateSpark(token, spark.id, {
         last_surfaced_at: now,
@@ -146,7 +148,7 @@ export const recallSparks = async (
     )
   )
 
-  return scored.map(({ spark }) => spark)
+  return updated.filter((s): s is Spark => s !== null)
 }
 
 // ─── Auto-decay ──────────────────────────────────────────────────────────────
