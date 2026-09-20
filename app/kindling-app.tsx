@@ -233,18 +233,28 @@ function SparkCard({
       ? null
       : `color-mix(in oklch, var(--color-primary) ${Math.round(heat * 100)}%, var(--color-cold))`
 
+  // Heat drives PRESENCE, not just colour. A fresh spark gets room, scale and a
+  // warm wash; a cooling one compacts toward a single dense line and sinks to
+  // the page colour. The list becomes a landscape with a horizon rather than a
+  // uniform stack — which is the part a 3px edge could never do on its own.
+  const hot = heat !== null && heat >= 0.66
+  const chilly = heat !== null && heat < 0.33
+
   const heatStyle: CSSProperties | undefined = heatColor
     ? {
         // The other three sides only lean toward the rail, so the card still
         // reads as one object rather than a stripe glued to a box.
-        borderColor: `color-mix(in oklch, ${heatColor} 20%, var(--color-border))`,
+        borderColor: `color-mix(in oklch, ${heatColor} 28%, var(--color-border))`,
         borderLeftColor: heatColor,
-        borderLeftWidth: '3px',
-        // Reserved for the genuinely fresh. If every card blooms, none do.
+        borderLeftWidth: hot ? '5px' : '3px',
+        // The whole card carries the temperature, not only its edge.
+        backgroundColor: chilly
+          ? 'var(--color-bg)'
+          : `color-mix(in oklch, ${heatColor} ${hot ? 9 : 4}%, var(--color-surface))`,
         ...(heat !== null && heat >= 0.85
           ? {
               boxShadow:
-                '-8px 0 20px -10px color-mix(in srgb, var(--color-primary) 18%, transparent)',
+                '-10px 0 28px -12px color-mix(in srgb, var(--color-primary) 26%, transparent)',
             }
           : {}),
       }
@@ -256,10 +266,11 @@ function SparkCard({
     <div
       data-heat={heatBucket}
       style={heatStyle}
-      className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors duration-[400ms] motion-reduce:transition-none ${
+      className={`group/card relative rounded-xl border flex flex-col transition-colors duration-[400ms] motion-reduce:transition-none ${
+        hot ? 'p-5 gap-3.5' : chilly ? 'px-4 py-3 gap-2' : 'p-4 gap-3'
+      } ${
         heat !== null
-          ? // Cold cards drop to the page color so they sit further back.
-            heat < 0.15
+          ? chilly
             ? 'bg-bg'
             : 'bg-surface'
           : isCold
@@ -269,8 +280,15 @@ function SparkCard({
               : 'bg-surface border-border'
       }`}
     >
+      {/* Selection is a mode you enter, not a permanent fixture on every card.
+          It stays reachable by keyboard and always visible once checked or on
+          touch, where there is no hover to reveal it. */}
       {onToggleSelected && (
-        <label className="flex items-center gap-2 text-xs text-fg-subtle cursor-pointer">
+        <label
+          className={`absolute -left-2.5 -top-2.5 z-10 flex items-center rounded-lg border border-border-strong bg-surface-raised p-1.5 shadow-md text-xs text-fg-subtle cursor-pointer transition-opacity motion-reduce:transition-none pointer-coarse:opacity-100 group-hover/card:opacity-100 group-focus-within/card:opacity-100 ${
+            selected ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
           <input
             type="checkbox"
             checked={Boolean(selected)}
@@ -298,7 +316,11 @@ function SparkCard({
             >
               ▶
             </span>
-            <span className="flex-1 font-display text-sm font-semibold leading-snug text-fg group-hover:text-primary transition-colors">
+            <span
+              className={`flex-1 font-display font-semibold leading-snug transition-colors group-hover:text-primary ${
+                hot ? 'text-lg text-fg' : chilly ? 'text-sm text-fg-muted' : 'text-base text-fg'
+              }`}
+            >
               {displayTitle(spark)}
             </span>
           </button>
@@ -314,7 +336,19 @@ function SparkCard({
           )}
         </div>
       ) : (
-        <Markdown>{spark.content}</Markdown>
+        // The idea is the whole point of the card and used to be its quietest
+        // element — smaller than the buttons sitting under it.
+        <div
+          className={`leading-relaxed ${
+            hot
+              ? 'text-base text-fg'
+              : chilly
+                ? 'text-sm text-fg-muted line-clamp-2'
+                : 'text-[0.9375rem] text-fg'
+          }`}
+        >
+          <Markdown>{spark.content}</Markdown>
+        </div>
       )}
 
       {/* Tags */}
@@ -350,7 +384,15 @@ function SparkCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 pt-1">
-        <div className="flex items-center gap-3 text-xs text-fg-subtle">
+        {/* fg-subtle was audited at 4.80 against the untinted card ("do not go
+            dimmer", per globals.css). The heat wash lightens that background,
+            which pushes the same token under AA — so washed cards step the
+            metadata up a rung rather than quietly failing. */}
+        <div
+          className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${
+            heat !== null && !chilly ? 'text-fg-muted' : 'text-fg-subtle'
+          }`}
+        >
           <span title={absoluteDate(spark.created_at)}>
             Captured {relativeAge(spark.created_at)}
           </span>
@@ -387,7 +429,12 @@ function SparkCard({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* These were the loudest thing on every card: six buttons carrying more
+            weight and area than the idea they act on. They now surface on hover
+            or keyboard focus and float clear of the flow, which is what lets a
+            card collapse to the height of its content. Small screens and touch
+            keep them in view, since there is no hover to reveal them there. */}
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface-raised/95 sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
           {isCold && onRevive && (
             <button
               type="button"
@@ -1281,9 +1328,11 @@ function Dashboard({
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-xl font-bold text-primary">Kindling</h1>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h1 className="shrink-0 font-display text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+            Kindling
+          </h1>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={() => void handleRecall()}
@@ -1416,7 +1465,22 @@ function Dashboard({
         )}
 
         {/* Kindle input */}
-        <div className="rounded-xl p-4 space-y-3 bg-surface border border-border">
+        <div className="relative overflow-hidden rounded-2xl p-5 space-y-3 bg-surface border border-border-strong shadow-lg">
+          {/* Capture is the one thing this app exists to do, and it looked like
+              a comment box. The warm bleed at the top edge is the only place
+              marigold appears at any size — it marks the hearth. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-24"
+            style={{
+              background:
+                'linear-gradient(to bottom, color-mix(in srgb, var(--color-primary) 16%, transparent), transparent)',
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-primary/70"
+          />
           <textarea
             ref={kindleRef}
             value={kindleText}
@@ -1427,7 +1491,7 @@ function Dashboard({
             placeholder="What's on your mind? Capture it before it fades…"
             aria-label="Capture a spark"
             rows={3}
-            className="w-full text-sm outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
+            className="relative w-full text-base outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
           />
           <div className="flex gap-2 items-center">
             <input
