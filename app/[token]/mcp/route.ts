@@ -306,7 +306,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.2.0' },
+          serverInfo: { name: 'kindling', version: '0.2.1' },
         })
 
       case 'notifications/initialized':

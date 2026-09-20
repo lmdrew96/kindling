@@ -8,10 +8,13 @@
    the ratio is noted where it constrains usage. AA = 4.5:1 for normal text,
    3:1 for large text and non-text UI (WCAG 1.4.11).
 
+   Ratios are given as "on bg / on surface". The surface is the lighter of the
+   two, so it is the binding constraint — every text token is checked there.
+
    Two constraints worth knowing before you reach for a color:
-     · Plush Topaz fails as text on the background (2.91) — fill/border only.
-     · Aqua Whisper is 3.79 — fine for icons, borders and large text, but
-       small text uses --color-cold-text instead.
+     · Plush Topaz fails as text on either background — fill/border only.
+     · Aqua Whisper is 3.01 on the surface — fine for icons, borders and
+       large text, but small text uses --color-cold-text instead.
    ───────────────────────────────────────────────────────────────────────── */
 
 @theme {
@@ -22,36 +25,44 @@
   --color-gleam: #0a3d46; /* Aqua Gleam     */
   --color-lilac: #4c3e70; /* Eventide Lilac */
 
-  /* Surfaces — Aqua Gleam lifted toward the foreground for elevation. */
-  --color-bg: #0a3d46;
-  --color-surface: #15454d; /* cards, inputs        */
-  --color-surface-raised: #1e4c53; /* hover, nested        */
-  --color-border: #2a555a;
-  --color-border-strong: #3c6265;
+  /* Surfaces. The page is Eventide Lilac deepened ~30%; cards are the palette
+     color itself, so the named purple is what you actually look at. Pure
+     #4C3E70 as the page color works but leaves almost no headroom — marigold
+     on cards drops to 4.63 and no Aqua Whisper tint reaches AA. Deepening the
+     page restores the ramp and makes cards read as elevated (1.39). */
+  --color-bg: #352b4e; /* Eventide Lilac -30%  */
+  --color-surface: #4c3e70; /* Eventide Lilac       */
+  --color-surface-raised: #574a77; /* hover, nested        */
+  --color-border: #665980;
+  --color-border-strong: #766a89;
 
   /* Foreground ramp. The palette has no neutral, so this is ADHDesigns Bone
-     mixed toward the background — which lands sage, and sits well with teal.
-     --color-fg-subtle is the AA floor; nothing below it carries meaning. */
-  --color-fg: #ede6d2; /* 9.53 */
-  --color-fg-muted: #b4bcaf; /* 6.08 */
-  --color-fg-subtle: #9eaba1; /* 4.97 — do not go dimmer */
+     mixed toward the card color. --color-fg-subtle is the AA floor on the
+     surface; nothing below it carries meaning. */
+  --color-fg: #ede6d2; /* 10.49 / 7.56 */
+  --color-fg-muted: #cdc4be; /*  7.61 / 5.49 */
+  --color-fg-subtle: #c0b7b7; /*  6.66 / 4.80 — do not go dimmer */
 
-  /* Primary action. Marigold fill takes Gleam text (6.77); Topaz is the
-     pressed/hover gold. Marigold is also safe as accent text (6.77). */
-  --color-primary: #f0bc3e;
+  /* Primary action. Marigold fill takes the page color as its text (7.45);
+     Topaz is the pressed/hover gold. Marigold is also safe as accent text. */
+  --color-primary: #f0bc3e; /* 7.45 / 5.37 */
   --color-primary-hover: #a87324;
-  --color-on-primary: #0a3d46;
+  --color-on-primary: #352b4e; /* 7.45 on marigold */
 
-  /* Cold sparks. Aqua for anything non-text, the lightened tint for labels. */
-  --color-cold: #309faf; /* 3.79 — icons, borders, fills */
-  --color-cold-text: #69b4ba; /* 5.00 — small text            */
+  /* Cold sparks. Aqua for anything non-text, the lightened tint for labels.
+     The tint is lighter than it was on the teal theme because it has to clear
+     AA against the lilac card, not the darker page. */
+  --color-cold: #309faf; /* 4.17 / 3.01 — icons, borders, fills */
+  --color-cold-text: #8fc3c1; /* 6.69 / 4.82 — small text            */
 
-  /* Tag pills. Eventide Lilac fill carries Bone at 7.56. */
-  --color-tag-bg: #4c3e70;
+  /* Tag pills. Aqua Gleam fill carries Bone at 9.53. The fill is close to the
+     card in luminance (1.26) and separates by hue, so the pill takes a teal
+     border to give it an edge that doesn't rely on color perception alone. */
+  --color-tag-bg: #0a3d46;
   --color-tag-fg: #ede6d2;
 
   /* Error. Not in the palette — a warm coral chosen to sit with the golds. */
-  --color-danger: #f2998c; /* 5.49 */
+  --color-danger: #ffa8a0; /* 7.07 / 5.09 */
 
   /* Focus. Marigold on the background is 6.77, well past the 3:1 minimum. */
   --color-ring: #f0bc3e;

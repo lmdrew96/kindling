@@ -427,7 +427,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** `2024-11-05`
-- **Server info:** `{ name: "kindling", version: "0.2.0" }`
+- **Server info:** `{ name: "kindling", version: "0.2.1" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
@@ -457,9 +457,11 @@ A malformed token short-circuits before any JSON-RPC handling and returns a plai
 
 A single-page client component at `app/page.tsx`. All color comes from theme tokens defined in `app/globals.css` — the component contains no hardcoded color values.
 
-**Palette:** Aqua Gleam `#0A3D46` (background), Light Marigold `#F0BC3E` (primary/CTA), Aqua Whisper `#309FAF` (cold sparks), Eventide Lilac `#4C3E70` (tag pills), Plush Topaz `#A87324` (hover/pressed gold). The foreground ramp is ADHDesigns Bone `#EDE6D2` mixed toward the background.
+**Palette:** Eventide Lilac `#4C3E70` (cards), the same deepened ~30% to `#352B4E` (page), Light Marigold `#F0BC3E` (primary/CTA), Aqua Whisper `#309FAF` (cold sparks), Aqua Gleam `#0A3D46` (tag pills), Plush Topaz `#A87324` (hover/pressed gold). The foreground ramp is ADHDesigns Bone `#EDE6D2` mixed toward the card color.
 
-Every pairing is contrast-checked and the ratios are documented inline in `globals.css`. Two constraints that the token names encode: Plush Topaz fails as text on the background (2.91), so it's fill-and-border only; Aqua Whisper is 3.79, fine for icons, borders and large text but not small text — which is why `--color-cold-text` exists as a lightened tint (5.00).
+The page is a deepened lilac rather than the palette color itself because pure `#4C3E70` as a full-page background leaves almost no contrast headroom — marigold on cards falls to 4.63 and no Aqua Whisper tint clears AA. Deepening the page and promoting `#4C3E70` to the card surface restores the ramp, and puts the named purple on every card rather than only on tag pills.
+
+Every pairing is contrast-checked and the ratios are documented inline in `globals.css` as "on page / on card". The card is the lighter of the two, so it's the binding constraint and every text token is verified against it. Two limits the token names encode: Plush Topaz fails as text on either surface, so it's fill-and-border only; Aqua Whisper is 3.01 on a card — fine for icons, borders and large text but not small text, which is why `--color-cold-text` exists as a lightened tint (4.80).
 
 Type is Raela Grotesque for body and Kineks Round for display, loaded from `branding/fonts/` via `next/font/local`.
 
