@@ -46,7 +46,30 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${raelaGrotesque.variable} ${kineksRound.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/*
+          The dashboard shell server-renders a capture box, tabs and a sort
+          control, then says "Loading your sparks…" forever if JS never runs.
+          Everything looks operable and nothing is — the worst version of a
+          broken page, because it does not announce itself. Say so instead.
+        */}
+        <noscript>
+          <p
+            style={{
+              margin: 0,
+              padding: '0.75rem 1rem',
+              background: 'var(--color-surface)',
+              color: 'var(--color-fg)',
+              fontSize: '0.875rem',
+              textAlign: 'center',
+            }}
+          >
+            Kindling needs JavaScript to load your sparks. The page below will not
+            finish loading without it.
+          </p>
+        </noscript>
+        {children}
+      </body>
     </html>
   )
 }
