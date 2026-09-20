@@ -6,7 +6,7 @@ Kindling is an idea inbox with a memory. You capture a half-formed thought mid-c
 
 It runs as a Next.js app that serves two things from one deployment:
 
-- **An MCP server** at `/{token}/mcp` — ten tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
+- **An MCP server** at `/{token}/mcp` — eleven tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
 - **A web dashboard** at `/` — a browser GUI over the same data, for when you'd rather see everything at once than ask for it.
 
 ---
@@ -141,13 +141,13 @@ https://your-deployment.example.com/{your-token}/mcp
 claude mcp add --transport http kindling https://your-deployment.example.com/{your-token}/mcp
 ```
 
-Once connected, the ten `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
+Once connected, the eleven `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
 
 ---
 
 ## MCP Tools Reference
 
-All ten tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
+All eleven tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
 
 Sparks are rendered in responses with a consistent one-line format:
 
@@ -204,6 +204,17 @@ Mark a spark as promoted — moved into a project, task, or note.
 Sets `promoted_to`, `promoted_at`, and `promoted_notes`, and moves the spark to `archived`. Promotion is a terminal state — the spark leaves the recall pool but keeps its full history.
 
 **Returns:** `Promoted [<id>] → <target>` plus notes if provided, or a not-found message.
+
+---
+
+### `kindling_export`
+
+Export the whole corpus as markdown or JSON. Also available over HTTP as `GET /api/sparks?token=…&format=markdown|json`, which sets `Content-Disposition` so a browser downloads it — that's what the dashboard's **Export** button uses.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `format` | `"markdown" \| "json"` | No | Defaults to `markdown` |
+| `status` | `"active" \| "cold" \| "archived"` | No | Limit to one status |
 
 ---
 
@@ -441,7 +452,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.7.0" }`
+- **Server info:** `{ name: "kindling", version: "0.8.0" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods

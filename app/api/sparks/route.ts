@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createSpark, listSparks, updateSpark } from '@/lib/sparks'
+import { exportFilename, toJson, toMarkdown } from '@/lib/export'
 import type { SparkStatus } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -29,6 +30,21 @@ export async function GET(req: NextRequest) {
 
   const status = req.nextUrl.searchParams.get('status') as SparkStatus | null
   const sparks = await listSparks(token, status ?? undefined)
+
+  // ?format=json|markdown returns a downloadable file rather than the array
+  // the dashboard consumes.
+  const format = req.nextUrl.searchParams.get('format')
+  if (format === 'json' || format === 'markdown') {
+    const body = format === 'json' ? toJson(sparks) : toMarkdown(sparks)
+    return new NextResponse(body, {
+      headers: {
+        'Content-Type':
+          format === 'json' ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${exportFilename(format)}"`,
+      },
+    })
+  }
+
   return NextResponse.json(sparks)
 }
 

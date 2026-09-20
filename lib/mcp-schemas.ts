@@ -110,6 +110,18 @@ export const toolSchemas = {
     spark_id: sparkId.describe('ID of the spark to inspect.'),
   }),
 
+  kindling_export: z.object({
+    format: z
+      .enum(['markdown', 'json'])
+      .optional()
+      .default('markdown')
+      .describe('markdown reads well and pastes into a note; json round-trips exactly.'),
+    status: z
+      .enum(['active', 'cold', 'archived'])
+      .optional()
+      .describe('Limit the export to one status. Omit for everything.'),
+  }),
+
   kindling_archive: z.object({
     spark_id: sparkId.describe('ID of the spark to archive.'),
   }),

@@ -9,6 +9,7 @@ import {
   recallSparks,
   runDecay,
 } from '@/lib/sparks'
+import { toJson, toMarkdown } from '@/lib/export'
 import {
   contentExtent,
   displayTitle,
@@ -127,6 +128,10 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   kindling_search:
     'Find a spark the user half-remembers, by text in its content and/or by tags. At least one of query or tags is required.\n\n' +
     'Reach for this the moment the user says "I know I wrote something about…" or "didn\'t I have an idea about…" — searching is cheaper than making them reconstruct it. Searches every status, so it finds archived and cold sparks too. Matching is substring, so try a shorter and more distinctive fragment before concluding nothing is there.',
+
+  kindling_export:
+    'Export the whole corpus as markdown or JSON — every spark, with tags, timestamps and promotion provenance.\n\n' +
+    'Offer it whenever the user talks about backing up, moving their notes elsewhere, or worries about losing things. Until Kindling has accounts, one token in one browser is the only handle on everything they have captured, so a copy elsewhere is genuinely valuable. markdown pastes into a note; json round-trips exactly.',
 
   kindling_archive:
     'Archive a spark that is no longer relevant, so it stops competing for attention in recall.\n\n' +
@@ -296,6 +301,13 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       return text(formatSparkVerbose(spark))
     }
 
+    case 'kindling_export': {
+      const { format, status } = parsed.data as Args<'kindling_export'>
+      const sparks = await listSparks(token, status)
+      if (sparks.length === 0) return text('Nothing to export — no sparks yet.')
+      return text(format === 'json' ? toJson(sparks) : toMarkdown(sparks))
+    }
+
     case 'kindling_archive': {
       const { spark_id } = parsed.data as Args<'kindling_archive'>
       const spark = await getSpark(token, spark_id)
@@ -398,7 +410,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.7.0' },
+          serverInfo: { name: 'kindling', version: '0.8.0' },
         })
       }
 

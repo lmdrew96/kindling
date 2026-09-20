@@ -564,6 +564,14 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         <div className="flex items-center justify-between">
           <h1 className="font-display text-xl font-bold text-primary">Kindling</h1>
           <div className="flex items-center gap-2">
+            <a
+              href={`/api/sparks?token=${token}&format=markdown`}
+              download
+              className="text-xs px-3 min-h-11 inline-flex items-center rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+              title="Download every spark as a markdown file"
+            >
+              Export
+            </a>
             <button
               type="button"
               onClick={copyMcp}
