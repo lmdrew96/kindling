@@ -3,13 +3,15 @@ import { redis, indexKey } from './redis'
 import type { Spark, SparkStatus } from './types'
 import {
   DAY_MS,
-  DECAY_THRESHOLD_DAYS,
+  canGoCold,
   contextBonus,
   contextWords,
   hasAnyTag,
+  isSnoozed,
   normalizeTags,
   scoreSpark,
 } from './spark-utils'
+import { getPrefs } from './prefs'
 
 export { scoreSpark }
 
@@ -34,6 +36,8 @@ export const createSpark = async (
     promoted_notes: null,
     status: 'active',
     cold_at: null,
+    snooze_until: null,
+    standing: false,
   }
   await redis.hset(indexKey(token), { [spark.id]: spark })
   return spark
@@ -110,8 +114,12 @@ export const recallSparks = async (
   context?: string
 ): Promise<Spark[]> => {
   await runDecay(token)
+  const { decayThresholdDays } = await getPrefs(token)
+  const nowMs = Date.now()
 
   let active = await listSparks(token, 'active')
+  // Snoozed sparks are still active — they just asked not to be asked yet.
+  active = active.filter((s) => !isSnoozed(s, nowMs))
   if (tags && tags.length > 0) {
     active = active.filter((s) => hasAnyTag(s, tags))
   }
@@ -121,7 +129,10 @@ export const recallSparks = async (
   // without overriding age and neglect.
   const words = context ? contextWords(context) : []
   const scored = active
-    .map((spark) => ({ spark, score: scoreSpark(spark) + contextBonus(spark, words) }))
+    .map((spark) => ({
+      spark,
+      score: scoreSpark(spark, nowMs, decayThresholdDays) + contextBonus(spark, words),
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
 
@@ -145,10 +156,13 @@ export const runDecay = async (token: string): Promise<void> => {
   if (active.length === 0) return
 
   const now = Date.now()
-  const threshold = DECAY_THRESHOLD_DAYS * DAY_MS
+  const { decayThresholdDays } = await getPrefs(token)
+  const threshold = decayThresholdDays * DAY_MS
 
   await Promise.all(
     active
+      // Standing sparks and snoozed ones are exempt from the clock entirely.
+      .filter((spark) => canGoCold(spark, now))
       .filter((spark) => {
         const lastInteraction = spark.last_surfaced_at ?? spark.created_at
         return now - lastInteraction >= threshold

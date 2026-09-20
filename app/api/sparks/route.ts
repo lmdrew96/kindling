@@ -14,6 +14,8 @@ const PatchBody = z
     title: z.string().min(1).max(200).nullable().optional(),
     content: z.string().min(1).max(100_000).optional(),
     tags: z.array(z.string().min(1)).optional(),
+    snooze_until: z.number().int().nullable().optional(),
+    standing: z.boolean().optional(),
   })
   .strict()
 

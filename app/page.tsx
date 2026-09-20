@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
 import {
+  DECAY_THRESHOLD_DAYS,
   absoluteDate,
   contentExtent,
   displayTitle,
   isLongContent,
   fuzzyMatches,
   isPromoted,
+  isSnoozed,
+  isStanding,
   normalizeTags,
   relativeAge,
   scoreSpark,
@@ -54,6 +57,40 @@ async function batchArchiveApi(token: string, ids: string[]): Promise<string[]> 
   return (await res.json()).archived as string[]
 }
 
+const SNOOZE_CHOICES: Array<{ label: string; days: number }> = [
+  { label: '1 week', days: 7 },
+  { label: '1 month', days: 30 },
+  { label: '3 months', days: 90 },
+]
+
+async function patchSparkApi(
+  token: string,
+  id: string,
+  body: Record<string, unknown>
+): Promise<void> {
+  const res = await fetch(`/api/sparks?token=${token}&id=${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error('Failed to update spark')
+}
+
+async function fetchPrefs(token: string): Promise<{ decayThresholdDays: number }> {
+  const res = await fetch(`/api/prefs?token=${token}`)
+  if (!res.ok) throw new Error('Failed to load settings')
+  return res.json()
+}
+
+async function savePrefs(token: string, decayThresholdDays: number): Promise<void> {
+  const res = await fetch(`/api/prefs?token=${token}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decayThresholdDays }),
+  })
+  if (!res.ok) throw new Error('Failed to save settings')
+}
+
 async function deleteApi(token: string, id: string): Promise<void> {
   const res = await fetch(`/api/sparks?token=${token}&id=${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete spark')
@@ -73,6 +110,9 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
 
 function SparkCard({
   spark,
+  onSnooze,
+  onUnsnooze,
+  onToggleStanding,
   onArchive,
   onRevive,
   onUnarchive,
@@ -82,6 +122,9 @@ function SparkCard({
   onDelete,
 }: {
   spark: Spark
+  onSnooze?: (days: number) => void
+  onUnsnooze?: () => void
+  onToggleStanding?: () => void
   onArchive?: () => void
   onRevive?: () => void
   onUnarchive?: () => void
@@ -93,6 +136,9 @@ function SparkCard({
 }) {
   const isCold = spark.status === 'cold'
   const promoted = isPromoted(spark)
+  const snoozed = isSnoozed(spark)
+  const standing = isStanding(spark)
+  const [snoozeOpen, setSnoozeOpen] = useState(false)
   const tags = spark.tags ?? []
   const long = isLongContent(spark.content)
   const [expanded, setExpanded] = useState(false)
@@ -208,6 +254,17 @@ function SparkCard({
               <span aria-hidden="true">❄</span> Gone cold
             </span>
           )}
+          {standing && (
+            <span className="flex items-center gap-1 text-primary">
+              <span aria-hidden="true">📌</span> Standing
+            </span>
+          )}
+          {snoozed && spark.snooze_until && (
+            <span className="flex items-center gap-1 text-fg-muted">
+              <span aria-hidden="true">💤</span> Snoozed until{' '}
+              {new Date(spark.snooze_until).toLocaleDateString()}
+            </span>
+          )}
           {showStatus && !isCold && (
             <span className="rounded-full border border-border px-2 py-0.5 text-fg-muted">
               {promoted ? 'Promoted' : spark.status === 'archived' ? 'Archived' : 'Active'}
@@ -233,6 +290,56 @@ function SparkCard({
             >
               Unarchive
             </button>
+          )}
+          {onToggleStanding && (
+            <button
+              type="button"
+              onClick={onToggleStanding}
+              aria-pressed={standing}
+              title={standing ? 'Put back on the decay clock' : 'Never let this go cold'}
+              className={`text-xs px-3 min-h-11 rounded-lg border transition-colors cursor-pointer ${
+                standing
+                  ? 'border-primary/40 bg-primary/15 text-primary'
+                  : 'border-border bg-surface text-fg-muted hover:text-fg'
+              }`}
+            >
+              📌
+            </button>
+          )}
+          {snoozed && onUnsnooze && (
+            <button
+              type="button"
+              onClick={onUnsnooze}
+              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
+            >
+              Wake
+            </button>
+          )}
+          {!snoozed && onSnooze && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSnoozeOpen((v) => !v)}
+                aria-expanded={snoozeOpen}
+                className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
+              >
+                Snooze
+              </button>
+              {snoozeOpen && (
+                <div className="absolute right-0 bottom-full z-10 mb-1 flex flex-col rounded-lg border border-border-strong bg-surface-raised p-1">
+                  {SNOOZE_CHOICES.map((c) => (
+                    <button
+                      key={c.days}
+                      type="button"
+                      onClick={() => { setSnoozeOpen(false); onSnooze(c.days) }}
+                      className="whitespace-nowrap rounded px-3 py-2 text-left text-xs text-fg-muted hover:bg-surface hover:text-fg cursor-pointer"
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {onDelete && (
             <button
@@ -425,6 +532,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [showStats, setShowStats] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<Spark | null>(null)
+  const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -462,6 +570,12 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }, [token])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetchPrefs(token)
+      .then((p) => setDecayDays(p.decayThresholdDays))
+      .catch(() => { /* defaults are fine; the dashboard still works */ })
+  }, [token])
 
   /**
    * "Capture it before it fades" was the product promise and it cost a mouse
@@ -583,6 +697,60 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     } catch {
       setSparks(previous)
       showToast("Couldn't delete that — the spark is still here.")
+    }
+  }
+
+  const handleSnooze = async (spark: Spark, days: number) => {
+    const until = Date.now() + days * 86_400_000
+    const previous = sparks
+    setSparks((prev) =>
+      prev.map((s) => (s.id === spark.id ? { ...s, snooze_until: until } : s))
+    )
+    try {
+      await patchSparkApi(token, spark.id, { snooze_until: until })
+      showToast(`Snoozed for ${days} day${days === 1 ? '' : 's'}.`, {
+        label: 'Undo',
+        run: () => { dismissToast(); void handleUnsnooze(spark) },
+      })
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't snooze that.")
+    }
+  }
+
+  const handleUnsnooze = async (spark: Spark) => {
+    const previous = sparks
+    setSparks((prev) => prev.map((s) => (s.id === spark.id ? { ...s, snooze_until: null } : s)))
+    try {
+      await patchSparkApi(token, spark.id, { snooze_until: null })
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't wake that spark.")
+    }
+  }
+
+  const handleToggleStanding = async (spark: Spark) => {
+    const next = !isStanding(spark)
+    const previous = sparks
+    setSparks((prev) => prev.map((s) => (s.id === spark.id ? { ...s, standing: next } : s)))
+    try {
+      await patchSparkApi(token, spark.id, { standing: next })
+      showToast(next ? 'Standing — this one will never go cold.' : 'Back on the decay clock.')
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't change that.")
+    }
+  }
+
+  const handleDecayChange = async (days: number) => {
+    const previous = decayDays
+    setDecayDays(days)
+    try {
+      await savePrefs(token, days)
+      showToast(`Sparks now go cold after ${days} days.`)
+    } catch {
+      setDecayDays(previous)
+      showToast("Couldn't save that setting.")
     }
   }
 
@@ -767,7 +935,12 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         </div>
 
         {showStats && sparks.length > 0 && (
-          <StatsPanel sparks={sparks} onClose={() => setShowStats(false)} />
+          <StatsPanel
+            sparks={sparks}
+            decayDays={decayDays}
+            onDecayChange={(d) => void handleDecayChange(d)}
+            onClose={() => setShowStats(false)}
+          />
         )}
 
         {/* Kindle input */}
@@ -937,6 +1110,11 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 selected={selected.has(spark.id)}
                 onToggleSelected={() => toggleSelected(spark.id)}
                 onDelete={() => setConfirmDelete(spark)}
+                onToggleStanding={() => void handleToggleStanding(spark)}
+                onSnooze={
+                  spark.status === 'active' ? (d) => void handleSnooze(spark, d) : undefined
+                }
+                onUnsnooze={() => void handleUnsnooze(spark)}
               />
             ))}
           </div>

@@ -12,6 +12,7 @@ import {
   runDecay,
 } from '@/lib/sparks'
 import { toJson, toMarkdown } from '@/lib/export'
+import { getPrefs, setPrefs } from '@/lib/prefs'
 import {
   contentExtent,
   displayTitle,
@@ -153,6 +154,18 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   kindling_find_duplicates:
     'Find sparks that are probably the same recurring thought captured more than once.\n\n' +
     'Useful during a cleanup pass, or when recall keeps surfacing variations of one idea. Each duplicate scores independently, so a thought the user keeps having crowds out everything else. Merge the pair with kindling_update and archive the loser.',
+
+  kindling_snooze:
+    'Hold a spark out of recall for a while — "not now, ask me in a month".\n\n' +
+    'The third option the lifecycle was missing. Without it the only ways to respond to a spark you are not ready for are to let it keep surfacing, or to archive it, which reads as rejection. Use it when the user says "not yet", "remind me later", or "after I ship X". Snoozed sparks are still active and are exempt from going cold while they wait.',
+
+  kindling_set_standing:
+    'Mark a spark as a standing intention, exempt from the decay clock forever — or put it back on the clock.\n\n' +
+    'Some sparks are not perishable ideas but ongoing commitments: "keep writing the newsletter", "learn Romanian properly". Those should never go cold just because nobody touched them for six months. Use this when the user describes something as ongoing or evergreen rather than as an idea they might act on.',
+
+  kindling_settings:
+    'Read or change how long a spark sits untouched before it goes cold (default 180 days).\n\n' +
+    'Call with no arguments to read the current setting. 180 days is a big assumption to make on someone\'s behalf — a user capturing fast-moving work may want 60, someone keeping long-horizon ideas may want 365. The same number also sets how quickly neglect accumulates in the recall ranking, so a spark reaches full neglect score exactly as it goes cold.',
 
   kindling_stats:
     'Counts by status, promotion rate, capture cadence, and the oldest and most neglected active sparks.\n\n' +
@@ -392,6 +405,51 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       )
     }
 
+    case 'kindling_snooze': {
+      const { spark_id, days } = parsed.data as Args<'kindling_snooze'>
+      const spark = await getSpark(token, spark_id)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
+      const until = Date.now() + days * 86_400_000
+      await updateSpark(token, spark_id, { snooze_until: until, status: 'active', cold_at: null })
+      return text(
+        `Snoozed [${spark_id}] ${displayTitle(spark)} for ${days} day${days === 1 ? '' : 's'} — ` +
+          `back in recall on ${new Date(until).toISOString().slice(0, 10)}.`
+      )
+    }
+
+    case 'kindling_set_standing': {
+      const { spark_id, standing } = parsed.data as Args<'kindling_set_standing'>
+      const spark = await getSpark(token, spark_id)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
+      await updateSpark(token, spark_id, {
+        standing,
+        // Coming back on the clock from cold would be surprising; reviving is
+        // an explicit act, so only clear cold when marking standing.
+        ...(standing && spark.status === 'cold' ? { status: 'active' as const, cold_at: null } : {}),
+      })
+      if (standing) {
+        return text(
+          `[${spark_id}] ${displayTitle(spark)} is now a standing spark — it will never go cold.`
+        )
+      }
+      const { decayThresholdDays } = await getPrefs(token)
+      return text(
+        `[${spark_id}] ${displayTitle(spark)} is back on the ${decayThresholdDays}-day decay clock.`
+      )
+    }
+
+    case 'kindling_settings': {
+      const { decay_days } = parsed.data as Args<'kindling_settings'>
+      const prefs = decay_days === undefined
+        ? await getPrefs(token)
+        : await setPrefs(token, { decayThresholdDays: decay_days })
+      return text(
+        `${decay_days === undefined ? 'Current settings' : 'Updated'} — sparks go cold after ` +
+          `${prefs.decayThresholdDays} days without interaction. ` +
+          `That same window sets how fast neglect builds in the recall ranking.`
+      )
+    }
+
     case 'kindling_stats': {
       const all = await listSparks(token)
       if (all.length === 0) return text('No sparks yet — nothing to report.')
@@ -566,7 +624,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.14.0' },
+          serverInfo: { name: 'kindling', version: '0.15.0' },
         })
       }
 

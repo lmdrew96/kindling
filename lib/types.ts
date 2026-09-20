@@ -18,4 +18,15 @@ export interface Spark {
   promoted_notes: string | null
   status: SparkStatus
   cold_at: number | null
+  /**
+   * "Not now, ask me later" — epoch ms until which this spark is held out of
+   * recall and exempt from decay. Null (or absent, on older sparks) means not
+   * snoozed.
+   */
+  snooze_until: number | null
+  /**
+   * A standing intention rather than a perishable idea. Standing sparks never
+   * decay to cold, however long they sit.
+   */
+  standing: boolean
 }

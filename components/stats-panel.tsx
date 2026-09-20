@@ -3,12 +3,24 @@
 import type { Spark } from '@/lib/types'
 import { computeStats, displayTitle, relativeAge } from '@/lib/spark-utils'
 
+const DECAY_CHOICES = [30, 60, 90, 180, 365, 730]
+
 /**
  * The view that makes the store feel like a system rather than a dropbox.
- * Everything here comes from the array the dashboard already holds, so it
- * costs no extra request.
+ * The counts come from the array the dashboard already holds, so they cost no
+ * extra request; only the decay setting is fetched separately.
  */
-export function StatsPanel({ sparks, onClose }: { sparks: Spark[]; onClose: () => void }) {
+export function StatsPanel({
+  sparks,
+  decayDays,
+  onDecayChange,
+  onClose,
+}: {
+  sparks: Spark[]
+  decayDays: number
+  onDecayChange: (days: number) => void
+  onClose: () => void
+}) {
   const s = computeStats(sparks)
 
   return (
@@ -61,6 +73,30 @@ export function StatsPanel({ sparks, onClose }: { sparks: Spark[]; onClose: () =
             {relativeAge(s.oldestActive.created_at)}
           </p>
         )}
+      </div>
+
+      {/* The decay clock. 180 days is a reasonable default but a poor thing to
+          decide on someone's behalf permanently. */}
+      <div className="border-t border-border pt-3">
+        <label className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+          Sparks go cold after
+          <select
+            value={decayDays}
+            onChange={(e) => onDecayChange(Number(e.target.value))}
+            className="min-h-11 cursor-pointer rounded-lg border border-border bg-surface px-2 text-xs text-fg outline-none"
+          >
+            {DECAY_CHOICES.map((d) => (
+              <option key={d} value={d}>
+                {d} days
+              </option>
+            ))}
+          </select>
+          without interaction.
+        </label>
+        <p className="mt-1 text-xs text-fg-subtle">
+          The same window sets how fast neglect builds in the recall ranking, so a spark hits its
+          highest score right as it goes cold.
+        </p>
       </div>
     </section>
   )

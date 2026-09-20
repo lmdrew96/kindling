@@ -12,13 +12,17 @@ export const DECAY_THRESHOLD_DAYS = 180
 
 // ─── Recall scoring ──────────────────────────────────────────────────────────
 
-export const scoreSpark = (spark: Spark, now: number = Date.now()): number => {
+export const scoreSpark = (
+  spark: Spark,
+  now: number = Date.now(),
+  decayThresholdDays: number = DECAY_THRESHOLD_DAYS
+): number => {
   const daysSinceCreated = (now - spark.created_at) / DAY_MS
   const ageScore = Math.min(daysSinceCreated / 365, 1) * 40
 
   const lastInteraction = spark.last_surfaced_at ?? spark.created_at
   const daysSinceInteraction = (now - lastInteraction) / DAY_MS
-  const neglectScore = Math.min(daysSinceInteraction / DECAY_THRESHOLD_DAYS, 1) * 40
+  const neglectScore = Math.min(daysSinceInteraction / decayThresholdDays, 1) * 40
 
   // approaches 20 when surface_count=0, halves with each surface
   const unusedScore = (1 / (spark.surface_count + 1)) * 20
@@ -332,3 +336,16 @@ export const findDuplicatePairs = (
   }
   return pairs.sort((x, y) => y.score - x.score)
 }
+
+// ─── Lifecycle ───────────────────────────────────────────────────────────────
+
+/** Held out of recall until the snooze expires. */
+export const isSnoozed = (spark: Spark, now: number = Date.now()): boolean =>
+  typeof spark.snooze_until === 'number' && spark.snooze_until > now
+
+/** Standing sparks are intentions, not perishable ideas — they never go cold. */
+export const isStanding = (spark: Spark): boolean => spark.standing === true
+
+/** Whether decay should be allowed to touch this spark at all. */
+export const canGoCold = (spark: Spark, now: number = Date.now()): boolean =>
+  spark.status === 'active' && !isStanding(spark) && !isSnoozed(spark, now)

@@ -168,6 +168,35 @@ export const toolSchemas = {
       .describe('How similar two sparks must be to count as duplicates. 1 is identical wording.'),
   }),
 
+  kindling_snooze: z.object({
+    spark_id: sparkId.describe('ID of the spark to snooze.'),
+    days: z
+      .number()
+      .int()
+      .min(1)
+      .max(1095)
+      .describe('How many days to hold it out of recall. Pass 0 via kindling_update to cancel.'),
+  }),
+
+  kindling_set_standing: z.object({
+    spark_id: sparkId.describe('ID of the spark.'),
+    standing: z
+      .boolean()
+      .describe('true exempts it from decay forever; false puts it back on the clock.'),
+  }),
+
+  kindling_settings: z.object({
+    decay_days: z
+      .number()
+      .int()
+      .min(7)
+      .max(1095)
+      .optional()
+      .describe(
+        'Days of no interaction before a spark goes cold. Omit to just read the current settings. Default 180.'
+      ),
+  }),
+
   kindling_stats: z.object({}),
 
   kindling_tags: z.object({}),
