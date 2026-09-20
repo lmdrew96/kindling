@@ -15,6 +15,9 @@ import {
   displayTitle,
   isLongContent,
   computeStats,
+  fuzzyMatches,
+  hasAnyTag,
+  hasTag,
   isPromoted,
   relativeAge,
   tagCounts,
@@ -276,7 +279,7 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
     case 'kindling_list': {
       const { status, tag, limit, offset, promoted } = parsed.data as Args<'kindling_list'>
       let sparks = await listSparks(token, status)
-      if (tag) sparks = sparks.filter((s) => (s.tags ?? []).includes(tag))
+      if (tag) sparks = sparks.filter((s) => hasTag(s, tag))
       if (promoted !== undefined) sparks = sparks.filter((s) => isPromoted(s) === promoted)
 
       const total = sparks.length
@@ -295,14 +298,27 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       if (!query && (!tags || tags.length === 0))
         return errText('Provide at least one of: query, tags.')
       const all = await listSparks(token)
-      const matches = all.filter((s) => {
-        const contentOk = query ? s.content.toLowerCase().includes(query) : true
-        const tagsOk = tags?.length ? (s.tags ?? []).some((t) => tags.includes(t)) : true
-        if (query && tags?.length) return contentOk && tagsOk
-        return query ? contentOk : tagsOk
-      })
+      const tagsOk = (s: Spark) => (tags?.length ? hasAnyTag(s, tags) : true)
+      const exactOk = (s: Spark) =>
+        query
+          ? `${s.title ?? ''} ${s.content}`.toLowerCase().includes(query)
+          : true
+
+      let matches = all.filter((s) => exactOk(s) && tagsOk(s))
+      let fuzzy = false
+
+      // Only fall back to fuzzy when exact finds nothing, so a good query is
+      // never diluted by near-misses.
+      if (matches.length === 0 && query) {
+        matches = all.filter((s) => fuzzyMatches(s, query) && tagsOk(s))
+        fuzzy = matches.length > 0
+      }
+
       if (matches.length === 0) return text('No sparks match that search.')
-      return text(matches.map(formatSpark).join('\n'))
+      const header = fuzzy
+        ? `No exact match, but ${matches.length} close one${matches.length === 1 ? '' : 's'}:\n\n`
+        : ''
+      return text(header + matches.map(formatSpark).join('\n'))
     }
 
     case 'kindling_get': {
@@ -470,7 +486,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.10.0' },
+          serverInfo: { name: 'kindling', version: '0.11.0' },
         })
       }
 

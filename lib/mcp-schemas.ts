@@ -32,7 +32,12 @@ const limit = (fallback: number, what: string) =>
     .describe(`Max number of ${what} to return. Default ${fallback}, max ${MAX_LIMIT}.`)
 
 const tagList = (description: string) =>
-  z.array(z.string().trim().min(1)).optional().describe(description)
+  z
+    .array(z.string().trim().min(1))
+    .optional()
+    // Folded here so no case variant can ever enter the store.
+    .transform((v) => (v ? Array.from(new Set(v.map((t) => t.toLowerCase()))) : v))
+    .describe(`${description} Lowercased automatically.`)
 
 /** Guards against a runaway paste becoming a permanent Redis resident. */
 const contentField = z
@@ -86,7 +91,12 @@ export const toolSchemas = {
 
   kindling_list: z.object({
     status: z.enum(['active', 'cold', 'archived']).optional().describe('Filter by status.'),
-    tag: z.string().trim().min(1).optional().describe('Filter by a specific tag.'),
+    tag: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Filter by a specific tag. Matching is case-insensitive.'),
     promoted: z
       .boolean()
       .optional()

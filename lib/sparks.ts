@@ -6,6 +6,8 @@ import {
   DECAY_THRESHOLD_DAYS,
   contextBonus,
   contextWords,
+  hasAnyTag,
+  normalizeTags,
   scoreSpark,
 } from './spark-utils'
 
@@ -23,7 +25,7 @@ export const createSpark = async (
     id: uuidv4(),
     title: title?.trim() || null,
     content,
-    tags,
+    tags: normalizeTags(tags),
     created_at: Date.now(),
     last_surfaced_at: null,
     surface_count: 0,
@@ -80,7 +82,7 @@ export const recallSparks = async (
 
   let active = await listSparks(token, 'active')
   if (tags && tags.length > 0) {
-    active = active.filter((s) => (s.tags ?? []).some((t) => tags.includes(t)))
+    active = active.filter((s) => hasAnyTag(s, tags))
   }
   if (active.length === 0) return []
 

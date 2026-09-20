@@ -7,9 +7,12 @@ import {
   contentExtent,
   displayTitle,
   isLongContent,
+  fuzzyMatches,
   isPromoted,
+  normalizeTags,
   relativeAge,
   scoreSpark,
+  tagCounts,
 } from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
 import { BTN_GHOST, BTN_PRIMARY, INPUT, UUID_RE } from '@/components/ui'
@@ -455,7 +458,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   const handleKindle = async () => {
     if (!kindleText.trim()) return
-    const tags = tagInput.split(',').map((t) => t.trim()).filter(Boolean)
+    const tags = normalizeTags(tagInput.split(','))
     setKindling(true)
     try {
       const spark = await kindleApi(token, kindleText.trim(), tags)
@@ -530,6 +533,8 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     setTimeout(() => setMcpCopied(false), 2000)
   }
 
+  const knownTags = tagCounts(sparks).map((t) => t.tag)
+
   const query = search.trim().toLowerCase()
   const matchesQuery = (s: Spark) =>
     !query ||
@@ -539,8 +544,16 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   // Searching looks everywhere. Scoping search to the open tab meant "I know I
   // wrote this down" -> nothing -> conclude it's lost, when it was one tab over.
-  const filtered = sparks
-    .filter((s) => (query ? matchesQuery(s) : inTab(s, tab)))
+  const exactHits = query ? sparks.filter(matchesQuery) : []
+  // Same rule as MCP search: fall back to fuzzy only when exact finds nothing.
+  const fuzzyFallback = query && exactHits.length === 0
+  const filtered = (
+    query
+      ? fuzzyFallback
+        ? sparks.filter((s) => fuzzyMatches(s, query))
+        : exactHits
+      : sparks.filter((s) => inTab(s, tab))
+  )
     // Redis hash order means nothing to a reader. Ranking by recall score is
     // the whole premise of the product, so it is also the default here.
     .sort(COMPARATORS[sort])
@@ -677,8 +690,19 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
               onChange={(e) => setTagInput(e.target.value)}
               placeholder="Tags (comma-separated)"
               aria-label="Tags, comma separated"
+              list="known-tags"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className={`flex-1 text-xs px-3 py-2 ${INPUT}`}
             />
+            {/* Suggests tags already in use, so the taxonomy stops fragmenting
+                into writing / Writing / write across three sessions. */}
+            <datalist id="known-tags">
+              {knownTags.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
             <button
               type="button"
               onClick={handleKindle}
@@ -707,6 +731,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           {searching && (
             <p className="text-xs text-fg-subtle" role="status">
               {filtered.length} result{filtered.length === 1 ? '' : 's'} across all statuses
+              {fuzzyFallback && filtered.length > 0 && ' (no exact match — showing close ones)'}
             </p>
           )}
         </div>

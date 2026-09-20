@@ -201,3 +201,71 @@ export const tagCounts = (sparks: Spark[]): Array<{ tag: string; count: number }
     (a, b) => b.count - a.count || a.tag.localeCompare(b.tag)
   )
 }
+
+// ─── Tag normalization ───────────────────────────────────────────────────────
+
+/**
+ * Tags fragment silently: "writing", "Writing" and " writing " become three
+ * unrelated tags, and a recall filtered by one misses the others with no
+ * error. Everything is folded on write, and comparisons fold too so sparks
+ * captured before this still match.
+ */
+export const normalizeTag = (tag: string): string => tag.trim().toLowerCase()
+
+export const normalizeTags = (tags: readonly string[]): string[] =>
+  Array.from(new Set(tags.map(normalizeTag).filter(Boolean)))
+
+/** Case-insensitive membership, for sparks whose tags predate normalization. */
+export const hasAnyTag = (spark: Spark, wanted: readonly string[]): boolean => {
+  const want = new Set(wanted.map(normalizeTag))
+  return (spark.tags ?? []).some((t) => want.has(normalizeTag(t)))
+}
+
+export const hasTag = (spark: Spark, wanted: string): boolean =>
+  (spark.tags ?? []).some((t) => normalizeTag(t) === normalizeTag(wanted))
+
+// ─── Fuzzy search ────────────────────────────────────────────────────────────
+
+/** Edit distance, abandoned early once it exceeds `max`. */
+const editDistance = (a: string, b: string, max: number): number => {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i]
+    let best = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+      best = Math.min(best, curr[j])
+    }
+    if (best > max) return max + 1
+    prev = curr
+  }
+  return prev[b.length]
+}
+
+/** Longer words tolerate more typos; short ones must be near-exact. */
+const tolerance = (word: string): number => (word.length <= 4 ? 0 : word.length <= 7 ? 1 : 2)
+
+/**
+ * Only used when exact substring matching finds nothing. The core use case is
+ * "I half-remember writing something about X" — requiring the user to
+ * reproduce their own phrasing exactly is the working-memory demand the
+ * product exists to remove.
+ */
+export const fuzzyMatches = (spark: Spark, query: string): boolean => {
+  const terms = contextWords(query)
+  if (terms.length === 0) return false
+
+  const haystack = `${spark.title ?? ''} ${spark.content} ${(spark.tags ?? []).join(' ')}`
+    .toLowerCase()
+    // A long spark is capped so a big store stays responsive.
+    .slice(0, 4000)
+  const words = Array.from(new Set(haystack.split(/[^a-z0-9]+/).filter((w) => w.length > 2)))
+
+  return terms.every((term) => {
+    const max = tolerance(term)
+    if (max === 0) return words.some((w) => w === term || w.startsWith(term))
+    return words.some((w) => w.includes(term) || editDistance(w, term, max) <= max)
+  })
+}
