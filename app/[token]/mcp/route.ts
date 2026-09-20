@@ -10,6 +10,14 @@ import {
   runDecay,
 } from '@/lib/sparks'
 import { displayTitle } from '@/lib/spark-utils'
+import { z } from 'zod'
+import {
+  formatZodError,
+  isToolName,
+  jsonSchemaFor,
+  toolSchemas,
+  type ToolName,
+} from '@/lib/mcp-schemas'
 
 export const runtime = 'nodejs'
 
@@ -65,188 +73,81 @@ const errText = (content: string) => ({
   isError: true,
 })
 
-// ─── Tool schemas ────────────────────────────────────────────────────────────
+// ─── Tool definitions ────────────────────────────────────────────────────────
 
-const TOOLS = [
-  {
-    name: 'kindle',
-    description: 'Capture a spark of thought, idea, or insight into Kindling.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        content: { type: 'string', description: 'The spark to capture.' },
-        title: {
-          type: 'string',
-          description:
-            'Short handle for the spark (≤80 chars), shown as the card heading in the dashboard. Supply one whenever content runs longer than a couple of sentences — it is what makes a long spark scannable in a list. Omit for one-line captures, which are their own title.',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional tags to categorize the spark.',
-        },
-      },
-      required: ['content'],
-    },
-  },
-  {
-    name: 'kindling_recall',
-    description:
-      'Surface sparks that have been waiting longest and are most in need of attention, using the Kindling recall algorithm.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: {
-          type: 'number',
-          description: 'Max number of sparks to return. Default 5.',
-        },
-        context: {
-          type: 'string',
-          description: 'Optional context hint about the current session or focus area.',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Filter recall to sparks matching ANY of these tags (e.g. ["substack", "writing"]).',
-        },
-      },
-    },
-  },
-  {
-    name: 'kindling_promote',
-    description: 'Mark a spark as promoted — moved into a project, task, or note.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spark_id: { type: 'string', description: 'ID of the spark to promote.' },
-        target: {
-          type: 'string',
-          description: 'Where it was promoted to (e.g. "ControlledChaos", "ThreadBrain", a URL, etc.).',
-        },
-        notes: {
-          type: 'string',
-          description: 'Optional provenance notes (e.g. "became the opening of Vertexism Section V").',
-        },
-      },
-      required: ['spark_id', 'target'],
-    },
-  },
-  {
-    name: 'kindling_list',
-    description: 'List sparks, optionally filtered by status and/or tag.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        status: {
-          type: 'string',
-          enum: ['active', 'cold', 'archived'],
-          description: 'Filter by status.',
-        },
-        tag: { type: 'string', description: 'Filter by a specific tag.' },
-        limit: { type: 'number', description: 'Max number of sparks to return.' },
-      },
-    },
-  },
-  {
-    name: 'kindling_search',
-    description: 'Search sparks by content and/or tags. At least one of query or tags is required.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Text to search for in spark content.' },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Filter to sparks matching ANY of these tags.',
-        },
-      },
-    },
-  },
-  {
-    name: 'kindling_archive',
-    description: 'Archive a spark that is no longer relevant.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spark_id: { type: 'string', description: 'ID of the spark to archive.' },
-      },
-      required: ['spark_id'],
-    },
-  },
-  {
-    name: 'kindling_dig',
-    description: 'Surface cold sparks that have gone quiet — review and decide to revive or archive.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: { type: 'number', description: 'Max number of cold sparks to return. Default 5.' },
-      },
-    },
-  },
-  {
-    name: 'kindling_update',
-    description: 'Edit the content and/or tags of an existing spark. At least one of content or tags is required.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spark_id: { type: 'string', description: 'ID of the spark to update.' },
-        title: { type: 'string', description: 'New short handle for the spark (≤80 chars).' },
-        content: { type: 'string', description: 'New content for the spark.' },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'New tags for the spark (replaces existing tags).',
-        },
-      },
-      required: ['spark_id'],
-    },
-  },
-  {
-    name: 'kindling_revive',
-    description: 'Move a cold spark back to active status.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spark_id: { type: 'string', description: 'ID of the cold spark to revive.' },
-      },
-      required: ['spark_id'],
-    },
-  },
-]
+/**
+ * Descriptions live here; the parameter shapes live in lib/mcp-schemas.ts and
+ * the wire `inputSchema` is generated from them, so a parameter cannot be
+ * advertised without also being enforced.
+ */
+const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
+  kindle: 'Capture a spark of thought, idea, or insight into Kindling.',
+  kindling_recall:
+    'Surface sparks that have been waiting longest and are most in need of attention, using the Kindling recall algorithm.',
+  kindling_promote: 'Mark a spark as promoted — moved into a project, task, or note.',
+  kindling_list: 'List sparks, optionally filtered by status and/or tag.',
+  kindling_search:
+    'Search sparks by content and/or tags. At least one of query or tags is required.',
+  kindling_archive: 'Archive a spark that is no longer relevant.',
+  kindling_dig:
+    'Surface cold sparks that have gone quiet — review and decide to revive or archive.',
+  kindling_update:
+    'Edit the title, content and/or tags of an existing spark. At least one of them is required.',
+  kindling_revive: 'Move a cold spark back to active status.',
+}
+
+const TOOLS = (Object.keys(TOOL_DESCRIPTIONS) as ToolName[]).map((name) => ({
+  name,
+  description: TOOL_DESCRIPTIONS[name],
+  inputSchema: jsonSchemaFor(name),
+}))
 
 // ─── Tool handlers ───────────────────────────────────────────────────────────
 
 type ToolArgs = Record<string, unknown>
+
+/** The validated shape of a given tool's arguments. */
+type Args<T extends ToolName> = z.infer<(typeof toolSchemas)[T]>
 
 const formatSpark = (spark: { id: string; content: string; tags?: string[]; status: string; surface_count: number; created_at: number }) => {
   const tags = spark.tags ?? []
   return `[${spark.id}] (${spark.status}) ${spark.content}${tags.length ? ` [${tags.join(', ')}]` : ''} — surfaced ${spark.surface_count}×`
 }
 
-async function handleToolCall(token: string, name: string, args: ToolArgs): Promise<unknown> {
+async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): Promise<unknown> {
+  if (!isToolName(name)) throw new Error(`Unknown tool: ${name}`)
+
+  // The single validation boundary. Upstash enforces no schema of its own, so
+  // anything that gets past here is what ends up stored forever.
+  const parsed = toolSchemas[name].safeParse(rawArgs)
+  if (!parsed.success) {
+    return errText(`Invalid arguments for ${name} — ${formatZodError(parsed.error)}`)
+  }
+
   switch (name) {
     case 'kindle': {
-      const content = args.content as string
-      const title = (args.title as string | undefined) ?? null
-      const tags = (args.tags as string[] | undefined) ?? []
+      const { content, title, tags } = parsed.data as Args<'kindle'>
       await runDecay(token)
-      const spark = await createSpark(token, content, tags, title)
+      const spark = await createSpark(token, content, tags ?? [], title ?? null)
       return text(`Kindled: [${spark.id}] ${displayTitle(spark)}`)
     }
 
     case 'kindling_recall': {
-      const limit = typeof args.limit === 'number' ? args.limit : 5
-      const tags = args.tags as string[] | undefined
+      const { limit, tags } = parsed.data as Args<'kindling_recall'>
       const sparks = await recallSparks(token, limit, tags)
-      if (sparks.length === 0) return text(tags?.length ? `No active sparks matching tags: ${tags.join(', ')}.` : 'No active sparks to recall.')
+      if (sparks.length === 0) {
+        return text(
+          tags?.length
+            ? `No active sparks matching tags: ${tags.join(', ')}.`
+            : 'No active sparks to recall.'
+        )
+      }
       const lines = sparks.map(formatSpark).join('\n')
       return text(`Recalled ${sparks.length} spark${sparks.length !== 1 ? 's' : ''}:\n\n${lines}`)
     }
 
     case 'kindling_promote': {
-      const spark_id = args.spark_id as string
-      const target = args.target as string
-      const notes = args.notes as string | undefined
+      const { spark_id, target, notes } = parsed.data as Args<'kindling_promote'>
       const updated = await updateSpark(token, spark_id, {
         promoted_to: target,
         promoted_at: Date.now(),
@@ -258,19 +159,23 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     }
 
     case 'kindling_list': {
-      const status = args.status as 'active' | 'cold' | 'archived' | undefined
-      const tag = args.tag as string | undefined
-      const limit = typeof args.limit === 'number' ? args.limit : undefined
+      const { status, tag, limit, offset } = parsed.data as Args<'kindling_list'>
       let sparks = await listSparks(token, status)
       if (tag) sparks = sparks.filter((s) => (s.tags ?? []).includes(tag))
-      if (limit) sparks = sparks.slice(0, limit)
-      if (sparks.length === 0) return text('No sparks found.')
-      return text(sparks.map(formatSpark).join('\n'))
+
+      const total = sparks.length
+      const page = sparks.slice(offset, offset + limit)
+      if (page.length === 0) {
+        return text(total === 0 ? 'No sparks found.' : `No sparks at offset ${offset} (${total} total).`)
+      }
+
+      const shown = `Showing ${offset + 1}–${offset + page.length} of ${total}`
+      return text(`${shown}:\n\n${page.map(formatSpark).join('\n')}`)
     }
 
     case 'kindling_search': {
-      const query = (args.query as string | undefined)?.toLowerCase()
-      const tags = args.tags as string[] | undefined
+      const { query: rawQuery, tags } = parsed.data as Args<'kindling_search'>
+      const query = rawQuery?.toLowerCase()
       if (!query && (!tags || tags.length === 0))
         return errText('Provide at least one of: query, tags.')
       const all = await listSparks(token)
@@ -285,7 +190,7 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     }
 
     case 'kindling_archive': {
-      const spark_id = args.spark_id as string
+      const { spark_id } = parsed.data as Args<'kindling_archive'>
       const spark = await getSpark(token, spark_id)
       if (!spark) return errText(`Spark ${spark_id} not found.`)
       await archiveSpark(token, spark_id)
@@ -293,18 +198,19 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     }
 
     case 'kindling_dig': {
-      const limit = typeof args.limit === 'number' ? args.limit : 5
+      const { limit } = parsed.data as Args<'kindling_dig'>
       const cold = await listSparks(token, 'cold')
       const slice = cold.slice(0, limit)
       if (slice.length === 0) return text('No cold sparks. Everything is still warm.')
-      return text(`${slice.length} cold spark${slice.length !== 1 ? 's' : ''} waiting:\n\n${slice.map(formatSpark).join('\n')}`)
+      return text(
+        `${slice.length} cold spark${slice.length !== 1 ? 's' : ''} waiting:\n\n${slice
+          .map(formatSpark)
+          .join('\n')}`
+      )
     }
 
     case 'kindling_update': {
-      const spark_id = args.spark_id as string
-      const title = args.title as string | undefined
-      const content = args.content as string | undefined
-      const tags = args.tags as string[] | undefined
+      const { spark_id, title, content, tags } = parsed.data as Args<'kindling_update'>
       if (!content && !tags && !title)
         return errText('Provide at least one of: title, content, tags.')
       const updated = await updateSpark(token, spark_id, {
@@ -314,11 +220,15 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       })
       if (!updated) return errText(`Spark ${spark_id} not found.`)
       const updatedTags = updated.tags ?? []
-      return text(`Updated [${spark_id}]: ${updated.content}${updatedTags.length ? ` [${updatedTags.join(', ')}]` : ''}`)
+      return text(
+        `Updated [${spark_id}]: ${displayTitle(updated)}${
+          updatedTags.length ? ` [${updatedTags.join(', ')}]` : ''
+        }`
+      )
     }
 
     case 'kindling_revive': {
-      const spark_id = args.spark_id as string
+      const { spark_id } = parsed.data as Args<'kindling_revive'>
       const spark = await getSpark(token, spark_id)
       if (!spark) return errText(`Spark ${spark_id} not found.`)
       if (spark.status !== 'cold')
@@ -326,9 +236,6 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       await reviveSpark(token, spark_id)
       return text(`Revived [${spark_id}] — back in the fire.`)
     }
-
-    default:
-      throw new Error(`Unknown tool: ${name}`)
   }
 }
 
@@ -384,7 +291,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.3.1' },
+          serverInfo: { name: 'kindling', version: '0.3.2' },
         })
       }
 
