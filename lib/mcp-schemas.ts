@@ -124,6 +124,10 @@ export const toolSchemas = {
       .describe('Limit the export to one status. Omit for everything.'),
   }),
 
+  kindling_stats: z.object({}),
+
+  kindling_tags: z.object({}),
+
   kindling_archive: z.object({
     spark_id: sparkId.describe('ID of the spark to archive.'),
   }),

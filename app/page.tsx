@@ -15,6 +15,7 @@ import { Markdown } from '@/components/markdown'
 import { BTN_GHOST, BTN_PRIMARY, INPUT, UUID_RE } from '@/components/ui'
 import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
+import { StatsPanel } from '@/components/stats-panel'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -375,6 +376,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [mcpCopied, setMcpCopied] = useState(false)
   const [confirmForget, setConfirmForget] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -618,6 +620,14 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         <div className="flex items-center justify-between">
           <h1 className="font-display text-xl font-bold text-primary">Kindling</h1>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowStats((v) => !v)}
+              aria-expanded={showStats}
+              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+            >
+              Stats
+            </button>
             <a
               href={`/api/sparks?token=${token}&format=markdown`}
               download
@@ -642,6 +652,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
           </div>
         </div>
+
+        {showStats && sparks.length > 0 && (
+          <StatsPanel sparks={sparks} onClose={() => setShowStats(false)} />
+        )}
 
         {/* Kindle input */}
         <div className="rounded-xl p-4 space-y-3 bg-surface border border-border">

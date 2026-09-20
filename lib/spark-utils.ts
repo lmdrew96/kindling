@@ -137,3 +137,67 @@ export const contextBonus = (spark: Spark, words: string[]): number => {
   const hits = words.filter((w) => haystack.includes(w)).length
   return (hits / words.length) * CONTEXT_MAX_BONUS
 }
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+export interface SparkStats {
+  total: number
+  active: number
+  cold: number
+  archived: number
+  promoted: number
+  /** Promoted as a share of everything no longer active. */
+  promotionRate: number | null
+  oldestActive: Spark | null
+  mostNeglected: Spark | null
+  capturedLast30: number
+  capturedLast7: number
+  untagged: number
+  neverSurfaced: number
+}
+
+/** One pass over the array the app already has in memory. */
+export const computeStats = (sparks: Spark[], now: number = Date.now()): SparkStats => {
+  const active = sparks.filter((s) => s.status === 'active')
+  const cold = sparks.filter((s) => s.status === 'cold')
+  const archived = sparks.filter((s) => s.status === 'archived')
+  const promoted = sparks.filter(isPromoted)
+
+  // Of the sparks that reached an end state, how many became something?
+  const concluded = archived.length
+  const byOldest = active.slice().sort((a, b) => a.created_at - b.created_at)
+  const byNeglect = active
+    .slice()
+    .sort((a, b) => (a.last_surfaced_at ?? a.created_at) - (b.last_surfaced_at ?? b.created_at))
+
+  const since = (days: number) =>
+    sparks.filter((s) => now - s.created_at <= days * DAY_MS).length
+
+  return {
+    total: sparks.length,
+    active: active.length,
+    cold: cold.length,
+    archived: archived.length,
+    promoted: promoted.length,
+    promotionRate: concluded > 0 ? promoted.length / concluded : null,
+    oldestActive: byOldest[0] ?? null,
+    mostNeglected: byNeglect[0] ?? null,
+    capturedLast30: since(30),
+    capturedLast7: since(7),
+    untagged: sparks.filter((s) => (s.tags ?? []).length === 0).length,
+    neverSurfaced: active.filter((s) => s.surface_count === 0).length,
+  }
+}
+
+/** Tag name -> number of sparks carrying it, most used first. */
+export const tagCounts = (sparks: Spark[]): Array<{ tag: string; count: number }> => {
+  const counts = new Map<string, number>()
+  for (const spark of sparks) {
+    for (const tag of spark.tags ?? []) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    }
+  }
+  return Array.from(counts, ([tag, count]) => ({ tag, count })).sort(
+    (a, b) => b.count - a.count || a.tag.localeCompare(b.tag)
+  )
+}

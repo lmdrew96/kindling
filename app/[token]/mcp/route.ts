@@ -14,8 +14,10 @@ import {
   contentExtent,
   displayTitle,
   isLongContent,
+  computeStats,
   isPromoted,
   relativeAge,
+  tagCounts,
 } from '@/lib/spark-utils'
 import type { Spark } from '@/lib/types'
 import { z } from 'zod'
@@ -132,6 +134,14 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   kindling_export:
     'Export the whole corpus as markdown or JSON — every spark, with tags, timestamps and promotion provenance.\n\n' +
     'Offer it whenever the user talks about backing up, moving their notes elsewhere, or worries about losing things. Until Kindling has accounts, one token in one browser is the only handle on everything they have captured, so a copy elsewhere is genuinely valuable. markdown pastes into a note; json round-trips exactly.',
+
+  kindling_stats:
+    'Counts by status, promotion rate, capture cadence, and the oldest and most neglected active sparks.\n\n' +
+    'Good for answering "how am I doing with this" or opening a review session. The promotion rate is the number worth caring about — it is the share of concluded sparks that became something real rather than being let go.',
+
+  kindling_tags:
+    'Every tag in use, with how many sparks carry each.\n\n' +
+    'Check this before inventing a new tag, and use it to spot fragmentation — "writing", "Writing" and "write" as three separate tags means recall filtered by any one of them silently misses the others.',
 
   kindling_archive:
     'Archive a spark that is no longer relevant, so it stops competing for attention in recall.\n\n' +
@@ -309,6 +319,40 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       return text(format === 'json' ? toJson(sparks) : toMarkdown(sparks))
     }
 
+    case 'kindling_stats': {
+      const all = await listSparks(token)
+      if (all.length === 0) return text('No sparks yet — nothing to report.')
+      const st = computeStats(all)
+      const lines = [
+        `${st.total} spark${st.total === 1 ? '' : 's'} total`,
+        `  active ${st.active} · cold ${st.cold} · archived ${st.archived} · promoted ${st.promoted}`,
+        '',
+        st.promotionRate !== null
+          ? `Promotion rate: ${Math.round(st.promotionRate * 100)}% of concluded sparks became something.`
+          : 'Promotion rate: nothing concluded yet.',
+        `Captured: ${st.capturedLast7} in the last week, ${st.capturedLast30} in the last 30 days.`,
+        `${st.neverSurfaced} active spark${st.neverSurfaced === 1 ? '' : 's'} never surfaced. ${st.untagged} untagged.`,
+      ]
+      if (st.oldestActive) {
+        lines.push('', `Oldest active: ${displayTitle(st.oldestActive)} (${relativeAge(st.oldestActive.created_at)})`)
+      }
+      if (st.mostNeglected) {
+        const touched = st.mostNeglected.last_surfaced_at ?? st.mostNeglected.created_at
+        lines.push(`Most neglected: ${displayTitle(st.mostNeglected)} (untouched ${relativeAge(touched)})`)
+      }
+      return text(lines.join('\n'))
+    }
+
+    case 'kindling_tags': {
+      const all = await listSparks(token)
+      const counts = tagCounts(all)
+      if (counts.length === 0) return text('No tags in use yet.')
+      return text(
+        `${counts.length} tag${counts.length === 1 ? '' : 's'} in use:\n` +
+          counts.map((t) => `  ${t.tag} (${t.count})`).join('\n')
+      )
+    }
+
     case 'kindling_archive': {
       const { spark_id } = parsed.data as Args<'kindling_archive'>
       const spark = await getSpark(token, spark_id)
@@ -426,7 +470,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.9.0' },
+          serverInfo: { name: 'kindling', version: '0.10.0' },
         })
       }
 
