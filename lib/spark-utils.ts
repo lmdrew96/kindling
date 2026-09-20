@@ -269,3 +269,66 @@ export const fuzzyMatches = (spark: Spark, query: string): boolean => {
     return words.some((w) => w.includes(term) || editDistance(w, term, max) <= max)
   })
 }
+
+// ─── Duplicate detection ─────────────────────────────────────────────────────
+
+/** Jaccard overlap of distinctive words. 1 = same wording, 0 = nothing shared. */
+export const similarity = (a: string, b: string): number => {
+  const A = new Set(contextWords(a))
+  const B = new Set(contextWords(b))
+  if (A.size === 0 || B.size === 0) return 0
+  let shared = 0
+  for (const w of A) if (B.has(w)) shared++
+  return shared / (A.size + B.size - shared)
+}
+
+/** Whitespace- and case-insensitive identity, for the unambiguous case. */
+export const isSameContent = (a: string, b: string): boolean =>
+  a.trim().toLowerCase().replace(/\s+/g, ' ') === b.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/**
+ * Above this, two sparks are probably the same recurring thought. Chosen to
+ * sit well clear of "same topic" — two sparks about writing share a couple of
+ * words and score far below it.
+ */
+export const NEAR_DUPLICATE = 0.6
+
+export interface DuplicateHit {
+  spark: Spark
+  score: number
+  exact: boolean
+}
+
+/** The closest existing spark to some new content, if anything is close. */
+export const findNearest = (
+  candidates: Spark[],
+  content: string,
+  threshold: number = NEAR_DUPLICATE
+): DuplicateHit | null => {
+  let best: DuplicateHit | null = null
+  for (const spark of candidates) {
+    if (isSameContent(spark.content, content)) return { spark, score: 1, exact: true }
+    const score = similarity(spark.content, content)
+    if (score >= threshold && (!best || score > best.score)) {
+      best = { spark, score, exact: false }
+    }
+  }
+  return best
+}
+
+/** Every near-duplicate pair in the store, closest first. */
+export const findDuplicatePairs = (
+  sparks: Spark[],
+  threshold: number = NEAR_DUPLICATE
+): Array<{ a: Spark; b: Spark; score: number }> => {
+  const pairs: Array<{ a: Spark; b: Spark; score: number }> = []
+  for (let i = 0; i < sparks.length; i++) {
+    for (let j = i + 1; j < sparks.length; j++) {
+      const score = isSameContent(sparks[i].content, sparks[j].content)
+        ? 1
+        : similarity(sparks[i].content, sparks[j].content)
+      if (score >= threshold) pairs.push({ a: sparks[i], b: sparks[j], score })
+    }
+  }
+  return pairs.sort((x, y) => y.score - x.score)
+}

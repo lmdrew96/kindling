@@ -17,6 +17,8 @@ import {
   displayTitle,
   isLongContent,
   computeStats,
+  findDuplicatePairs,
+  findNearest,
   fuzzyMatches,
   hasAnyTag,
   hasTag,
@@ -148,6 +150,10 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
     'Permanently delete a spark. There is no undo and no trash.\n\n' +
     'Only ever call this when the user has explicitly asked to delete something — a stray capture, something they would rather not have written down. For everything else use kindling_archive, which is reversible and keeps it out of recall just as effectively. If they said "get rid of this", ask which they mean before calling.',
 
+  kindling_find_duplicates:
+    'Find sparks that are probably the same recurring thought captured more than once.\n\n' +
+    'Useful during a cleanup pass, or when recall keeps surfacing variations of one idea. Each duplicate scores independently, so a thought the user keeps having crowds out everything else. Merge the pair with kindling_update and archive the loser.',
+
   kindling_stats:
     'Counts by status, promotion rate, capture cadence, and the oldest and most neglected active sparks.\n\n' +
     'Good for answering "how am I doing with this" or opening a review session. The promotion rate is the number worth caring about — it is the share of concluded sparks that became something real rather than being let go.',
@@ -251,8 +257,32 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
 
   switch (name) {
     case 'kindle': {
-      const { content, title, tags } = parsed.data as Args<'kindle'>
+      const { content, title, tags, allow_duplicate } = parsed.data as Args<'kindle'>
       await runDecay(token)
+
+      // The same recurring thought captured three times becomes three sparks
+      // that then compete against each other in recall.
+      if (!allow_duplicate) {
+        const live = (await listSparks(token)).filter((s) => s.status !== 'archived')
+        const hit = findNearest(live, content)
+        if (hit?.exact) {
+          return text(
+            `Already kindled — [${hit.spark.id}] ${displayTitle(hit.spark)} has the same content ` +
+              `(captured ${relativeAge(hit.spark.created_at)}). Nothing new was written. ` +
+              `Pass allow_duplicate: true if you meant to capture it again.`
+          )
+        }
+        if (hit) {
+          const spark = await createSpark(token, content, tags ?? [], title ?? null)
+          return text(
+            `Kindled: [${spark.id}] ${displayTitle(spark)}\n\n` +
+              `Heads up — this looks like [${hit.spark.id}] ${displayTitle(hit.spark)} ` +
+              `(${Math.round(hit.score * 100)}% similar, captured ${relativeAge(hit.spark.created_at)}). ` +
+              `Both are kept; merge them with kindling_update and kindling_archive if they are the same thought.`
+          )
+        }
+      }
+
       const spark = await createSpark(token, content, tags ?? [], title ?? null)
       return text(`Kindled: [${spark.id}] ${displayTitle(spark)}`)
     }
@@ -343,6 +373,23 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       const sparks = await listSparks(token, status)
       if (sparks.length === 0) return text('Nothing to export — no sparks yet.')
       return text(format === 'json' ? toJson(sparks) : toMarkdown(sparks))
+    }
+
+    case 'kindling_find_duplicates': {
+      const { threshold } = parsed.data as Args<'kindling_find_duplicates'>
+      const live = (await listSparks(token)).filter((s) => s.status !== 'archived')
+      const pairs = findDuplicatePairs(live, threshold).slice(0, 25)
+      if (pairs.length === 0) return text('No duplicates found.')
+      return text(
+        `${pairs.length} likely duplicate pair${pairs.length === 1 ? '' : 's'}:\n\n` +
+          pairs
+            .map(
+              ({ a, b, score }) =>
+                `${Math.round(score * 100)}% — [${a.id}] ${displayTitle(a)}\n` +
+                `      vs [${b.id}] ${displayTitle(b)}`
+            )
+            .join('\n\n')
+      )
     }
 
     case 'kindling_stats': {
@@ -519,7 +566,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.13.0' },
+          serverInfo: { name: 'kindling', version: '0.14.0' },
         })
       }
 

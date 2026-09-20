@@ -63,6 +63,13 @@ export const toolSchemas = {
     content: contentField.describe('The spark to capture.'),
     title: titleField,
     tags: tagList('Tags to categorize the spark.'),
+    allow_duplicate: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'Set true to capture even if an identical spark already exists. Only use it when the user has been told about the duplicate and wants it anyway.'
+      ),
   }),
 
   kindling_recall: z.object({
@@ -149,6 +156,16 @@ export const toolSchemas = {
       .describe(
         'Must be true, and must reflect something the user actually said. Deletion is permanent and has no undo — archive instead unless they explicitly asked to delete.'
       ),
+  }),
+
+  kindling_find_duplicates: z.object({
+    threshold: z
+      .number()
+      .min(0.3)
+      .max(1)
+      .optional()
+      .default(0.6)
+      .describe('How similar two sparks must be to count as duplicates. 1 is identical wording.'),
   }),
 
   kindling_stats: z.object({}),
