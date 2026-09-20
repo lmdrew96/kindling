@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
-import { contentExtent, displayTitle, isLongContent } from '@/lib/spark-utils'
+import { contentExtent, displayTitle, isLongContent, scoreSpark } from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -235,6 +235,27 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
   )
 }
 
+// ─── Sorting ──────────────────────────────────────────────────────────────────
+
+type SortKey = 'recall' | 'newest' | 'oldest' | 'neglected'
+
+const SORT_LABELS: Record<SortKey, string> = {
+  recall: 'Recall score',
+  newest: 'Newest',
+  oldest: 'Oldest',
+  neglected: 'Most neglected',
+}
+
+/** Last time a spark was touched at all — surfaced if ever, else created. */
+const lastTouched = (s: Spark): number => s.last_surfaced_at ?? s.created_at
+
+const COMPARATORS: Record<SortKey, (a: Spark, b: Spark) => number> = {
+  recall: (a, b) => scoreSpark(b) - scoreSpark(a),
+  newest: (a, b) => b.created_at - a.created_at,
+  oldest: (a, b) => a.created_at - b.created_at,
+  neglected: (a, b) => lastTouched(a) - lastTouched(b),
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 type Tab = SparkStatus
@@ -242,6 +263,7 @@ type Tab = SparkStatus
 function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
+  const [sort, setSort] = useState<SortKey>('recall')
   const [search, setSearch] = useState('')
   const [kindleText, setKindleText] = useState('')
   const [tagInput, setTagInput] = useState('')
@@ -315,6 +337,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
       !search || s.content.toLowerCase().includes(search.toLowerCase()) ||
       (s.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
     )
+    // Redis hash order means nothing to a reader. Ranking by recall score is
+    // the whole premise of the product, so it is also the default here.
+    .sort(COMPARATORS[sort])
 
   const counts: Record<Tab, number> = {
     active: sparks.filter((s) => s.status === 'active').length,
@@ -402,22 +427,39 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           className={`w-full text-sm px-4 py-2.5 rounded-xl ${INPUT}`}
         />
 
-        {/* Tabs */}
-        <div className="flex gap-1">
-          {(['active', 'cold', 'archived'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer border transition-colors ${
-                tab === t
-                  ? 'bg-primary/15 text-primary border-primary/40 font-semibold'
-                  : 'bg-transparent text-fg-subtle border-transparent hover:text-fg-muted'
-              }`}
+        {/* Tabs + sort */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-1">
+            {(['active', 'cold', 'archived'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer border transition-colors ${
+                  tab === t
+                    ? 'bg-primary/15 text-primary border-primary/40 font-semibold'
+                    : 'bg-transparent text-fg-subtle border-transparent hover:text-fg-muted'
+                }`}
+              >
+                {tabLabel(t)}
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-fg-subtle">
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className={`text-xs px-2 py-1.5 cursor-pointer ${INPUT}`}
             >
-              {tabLabel(t)}
-            </button>
-          ))}
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                <option key={k} value={k}>
+                  {SORT_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {/* Sparks list */}
