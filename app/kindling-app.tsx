@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
 import {
   DECAY_THRESHOLD_DAYS,
@@ -27,6 +27,11 @@ import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
+
+// The origin never changes within a page's life, so there is nothing to
+// subscribe to — this exists only to satisfy useSyncExternalStore's signature.
+const subscribeToNothing = () => () => {}
+const browserOrigin = () => window.location.origin
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -678,9 +683,14 @@ function Dashboard({
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const mcpUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/${token}/mcp`
-    : `https://kindling.adhdesigns.dev/${token}/mcp`
+  // The origin is only knowable in the browser. Reading window.location straight
+  // out of render would have the server and the client disagree about this
+  // string the moment the help panel is open — and a hardcoded production
+  // fallback would hand a localhost user the wrong URL to copy. The server
+  // snapshot is empty and the real origin arrives right after hydration.
+  const origin = useSyncExternalStore(subscribeToNothing, browserOrigin, () => '')
+
+  const mcpUrl = `${origin}/${token}/mcp`
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
