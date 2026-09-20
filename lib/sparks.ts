@@ -7,8 +7,11 @@ import {
   contextBonus,
   contextWords,
   hasAnyTag,
+  hasTag,
   isSnoozed,
+  normalizeTag,
   normalizeTags,
+  renameTagIn,
   scoreSpark,
 } from './spark-utils'
 import { getPrefs } from './prefs'
@@ -93,6 +96,54 @@ export const archiveSparks = async (token: string, ids: string[]): Promise<strin
   const changed = Object.keys(updates)
   if (changed.length > 0) await redis.hset(indexKey(token), updates)
   return changed
+}
+
+export interface TagRenameResult {
+  /** Spark ids that actually changed. Reversing the rename means passing these back. */
+  changed: string[]
+  /** True when `to` was already in use, so this folded two tags into one. */
+  merged: boolean
+}
+
+/**
+ * Rename a tag across the whole store, in one hgetall plus one hset.
+ *
+ * Merging is the same operation — renaming "Writing" to "writing" when both
+ * exist folds them together. That is deliberately not a separate code path,
+ * because the two are indistinguishable from the caller's side.
+ *
+ * `restrictTo` scopes the rewrite to specific spark ids, which is the only way
+ * to undo a merge correctly: reversing "a -> b" across the whole store would
+ * also rename the sparks that already carried `b` before the merge.
+ */
+export const renameTag = async (
+  token: string,
+  from: string,
+  to: string,
+  restrictTo?: string[]
+): Promise<TagRenameResult> => {
+  const fromNorm = normalizeTag(from)
+  const toNorm = normalizeTag(to)
+  if (!fromNorm || !toNorm || fromNorm === toNorm) return { changed: [], merged: false }
+
+  const all = await redis.hgetall<Record<string, Spark>>(indexKey(token))
+  if (!all) return { changed: [], merged: false }
+
+  const only = restrictTo ? new Set(restrictTo) : null
+  const updates: Record<string, Spark> = {}
+  let merged = false
+
+  for (const [id, spark] of Object.entries(all)) {
+    if (!spark) continue
+    if (only && !only.has(id)) continue
+    if (!hasTag(spark, fromNorm)) continue
+    if (hasTag(spark, toNorm)) merged = true
+    updates[id] = { ...spark, tags: renameTagIn(spark.tags ?? [], fromNorm, toNorm) }
+  }
+
+  const changed = Object.keys(updates)
+  if (changed.length > 0) await redis.hset(indexKey(token), updates)
+  return { changed, merged }
 }
 
 /**

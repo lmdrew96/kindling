@@ -7,6 +7,7 @@ import {
   archiveSpark,
   archiveSparks,
   deleteSpark,
+  renameTag,
   reviveSpark,
   recallSparks,
   runDecay,
@@ -24,10 +25,12 @@ import {
   hasAnyTag,
   hasTag,
   isPromoted,
+  normalizeTag,
   relativeAge,
   tagCounts,
 } from '@/lib/spark-utils'
 import type { Spark } from '@/lib/types'
+import { version as KINDLING_VERSION } from '@/package.json'
 import { z } from 'zod'
 import {
   formatZodError,
@@ -174,6 +177,11 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   kindling_tags:
     'Every tag in use, with how many sparks carry each.\n\n' +
     'Check this before inventing a new tag, and use it to spot fragmentation — "writing", "Writing" and "write" as three separate tags means recall filtered by any one of them silently misses the others.',
+
+  kindling_rename_tag:
+    'Rename a tag across every spark that carries it — and merge two tags by renaming one into the other.\n\n' +
+    'Tag normalization only stops NEW fragmentation; it does nothing about the variants already in the store. This is the repair tool. Reach for it when kindling_tags shows the same idea split across "writing", "Writing" and "write", or when the user says a tag should have been called something else.\n\n' +
+    'A plain rename into an unused name is freely reversible — rename it back. A MERGE is not, because afterwards there is no way to tell which sparks originally carried which tag, so `confirm_merge` is required and should only be set after the user has agreed to it. Check kindling_tags first so you can tell them how many sparks each side has.',
 
   kindling_archive:
     'Archive a spark that is no longer relevant, so it stops competing for attention in recall.\n\n' +
@@ -484,6 +492,52 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       )
     }
 
+    case 'kindling_rename_tag': {
+      const { from, to, confirm_merge } = parsed.data as Args<'kindling_rename_tag'>
+
+      // Tags are stored folded, so "zine" -> "ZINE" is a no-op. Catching it
+      // here stops it being reported as an irreversible merge with itself.
+      if (normalizeTag(from) === normalizeTag(to)) {
+        return errText(
+          `"${from}" and "${to}" are the same tag — tags are stored lowercase, so there is nothing to change.`
+        )
+      }
+
+      const all = await listSparks(token)
+
+      const carriers = all.filter((s) => hasTag(s, from))
+      if (carriers.length === 0) {
+        return errText(
+          `No sparks carry the tag "${from}". Call kindling_tags to see what is actually in use.`
+        )
+      }
+
+      // A merge is irreversible: afterwards nothing records which sparks came
+      // from which tag. So it needs the same explicit consent as a delete.
+      const existing = all.filter((s) => hasTag(s, to))
+      if (existing.length > 0 && !confirm_merge) {
+        return errText(
+          `"${to}" is already in use on ${existing.length} spark${existing.length === 1 ? '' : 's'}, ` +
+            `so renaming "${from}" (${carriers.length} spark${carriers.length === 1 ? '' : 's'}) into it is a MERGE. ` +
+            `That cannot be cleanly undone — afterwards there is no record of which spark had which tag. ` +
+            `Tell the user those counts, and call again with confirm_merge: true if they want it.`
+        )
+      }
+
+      const { changed, merged } = await renameTag(token, from, to)
+      if (changed.length === 0) {
+        return errText(`Nothing changed — "${from}" and "${to}" may already be the same tag.`)
+      }
+
+      return text(
+        `${merged ? 'Merged' : 'Renamed'} "${from}" → "${to}" across ${changed.length} ` +
+          `spark${changed.length === 1 ? '' : 's'}.` +
+          (merged
+            ? ' The two tags are now one; this cannot be undone.'
+            : ` Reverse it by renaming "${to}" back to "${from}".`)
+      )
+    }
+
     case 'kindling_batch_archive': {
       const { spark_ids } = parsed.data as Args<'kindling_batch_archive'>
       const archived = await archiveSparks(token, spark_ids)
@@ -624,7 +678,8 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.17.1' },
+          // Read from package.json so it cannot drift from the release.
+          serverInfo: { name: 'kindling', version: KINDLING_VERSION },
         })
       }
 

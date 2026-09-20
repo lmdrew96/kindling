@@ -201,6 +201,26 @@ export const toolSchemas = {
 
   kindling_tags: z.object({}),
 
+  kindling_rename_tag: z.object({
+    from: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('The tag to rename. Matched case-insensitively, so "Writing" also catches "writing".'),
+    to: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('What to rename it to. Lowercased automatically. If this tag already exists, the two are merged.'),
+    confirm_merge: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'Required when `to` is already in use, because that folds two tags into one and cannot be cleanly reversed. Call kindling_tags first to see what exists, tell the user how many sparks each tag has, and only set this once they have agreed to the merge.'
+      ),
+  }),
+
   kindling_archive: z.object({
     spark_id: sparkId.describe('ID of the spark to archive.'),
   }),

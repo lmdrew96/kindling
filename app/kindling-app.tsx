@@ -79,6 +79,21 @@ async function patchSparkApi(
   if (!res.ok) throw new Error('Failed to update spark')
 }
 
+async function renameTagApi(
+  token: string,
+  from: string,
+  to: string,
+  restrictTo?: string[]
+): Promise<{ changed: string[]; merged: boolean }> {
+  const res = await fetch(`/api/tags?token=${token}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to, ...(restrictTo ? { restrict_to: restrictTo } : {}) }),
+  })
+  if (!res.ok) throw new Error('Failed to rename tag')
+  return res.json()
+}
+
 async function fetchPrefs(token: string): Promise<{ decayThresholdDays: number }> {
   const res = await fetch(`/api/prefs?token=${token}`)
   if (!res.ok) throw new Error('Failed to load settings')
@@ -857,6 +872,39 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }
 
+  /**
+   * A store-wide rewrite, so it re-reads rather than patching local state by
+   * hand. A plain rename is reversible; a merge is not, because afterwards
+   * nothing records which spark carried which tag — so Undo is offered only
+   * for the reversible case, scoped to exactly the sparks that changed.
+   */
+  const handleRenameTag = async (from: string, to: string) => {
+    try {
+      const { changed, merged } = await renameTagApi(token, from, to)
+      if (changed.length === 0) {
+        showToast('Nothing to rename.')
+        return
+      }
+      await load()
+      const what = `${changed.length} spark${changed.length === 1 ? '' : 's'}`
+      if (merged) {
+        showToast(`Merged into "${to}" across ${what}.`)
+        return
+      }
+      showToast(`Renamed to "${to}" across ${what}.`, {
+        label: 'Undo',
+        run: () => {
+          dismissToast()
+          void renameTagApi(token, to, from, changed)
+            .then(load)
+            .catch(() => showToast("Couldn't undo that rename."))
+        },
+      })
+    } catch {
+      showToast("Couldn't rename that tag.")
+    }
+  }
+
   const handleDecayChange = async (days: number) => {
     const previous = decayDays
     setDecayDays(days)
@@ -1195,6 +1243,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             sparks={sparks}
             decayDays={decayDays}
             onDecayChange={(d) => void handleDecayChange(d)}
+            onRenameTag={handleRenameTag}
             onClose={() => setShowStats(false)}
           />
         )}

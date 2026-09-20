@@ -228,6 +228,32 @@ export const hasAnyTag = (spark: Spark, wanted: readonly string[]): boolean => {
 export const hasTag = (spark: Spark, wanted: string): boolean =>
   (spark.tags ?? []).some((t) => normalizeTag(t) === normalizeTag(wanted))
 
+/**
+ * Rewrites every case-variant of `from` to `to` in one spark's tag list.
+ *
+ * Normalization stops NEW fragmentation; it does nothing about the variants
+ * already sitting in a store, which is what this is for. Only the matched tag
+ * is touched — the rest are left exactly as captured — but the result is
+ * deduplicated case-insensitively, so renaming into a tag the spark already
+ * carries merges the two instead of listing it twice.
+ */
+export const renameTagIn = (tags: readonly string[], from: string, to: string): string[] => {
+  const fromNorm = normalizeTag(from)
+  const toNorm = normalizeTag(to)
+  const out: string[] = []
+  const seen = new Set<string>()
+
+  for (const tag of tags) {
+    const next = normalizeTag(tag) === fromNorm ? toNorm : tag
+    const key = normalizeTag(next)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(next)
+  }
+
+  return out
+}
+
 // ─── Fuzzy search ────────────────────────────────────────────────────────────
 
 /** Edit distance, abandoned early once it exceeds `max`. */

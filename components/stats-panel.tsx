@@ -2,6 +2,7 @@
 
 import type { Spark } from '@/lib/types'
 import { computeStats, displayTitle, relativeAge } from '@/lib/spark-utils'
+import { TagManager } from '@/components/tag-manager'
 
 const DECAY_CHOICES = [30, 60, 90, 180, 365, 730]
 
@@ -14,11 +15,13 @@ export function StatsPanel({
   sparks,
   decayDays,
   onDecayChange,
+  onRenameTag,
   onClose,
 }: {
   sparks: Spark[]
   decayDays: number
   onDecayChange: (days: number) => void
+  onRenameTag: (from: string, to: string) => Promise<void>
   onClose: () => void
 }) {
   const s = computeStats(sparks)
@@ -97,6 +100,14 @@ export function StatsPanel({
           The same window sets how fast neglect builds in the recall ranking, so a spark hits its
           highest score right as it goes cold.
         </p>
+      </div>
+
+      {/* Tags live here rather than behind their own header button: seeing the
+          counts next to each other is what makes fragmentation visible, and
+          this is already the panel that shows the shape of the store. */}
+      <div className="border-t border-border pt-3 space-y-2">
+        <h3 className="font-display text-xs font-bold text-fg">Tags</h3>
+        <TagManager sparks={sparks} onRename={onRenameTag} />
       </div>
     </section>
   )

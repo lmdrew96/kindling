@@ -6,7 +6,7 @@ Kindling is an idea inbox with a memory. You capture a half-formed thought mid-c
 
 It runs as a Next.js app that serves two things from one deployment:
 
-- **An MCP server** at `/{token}/mcp` — nineteen tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
+- **An MCP server** at `/{token}/mcp` — twenty tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
 - **A web dashboard** at `/` — a browser GUI over the same data, for when you'd rather see everything at once than ask for it.
 
 ---
@@ -141,13 +141,13 @@ https://your-deployment.example.com/{your-token}/mcp
 claude mcp add --transport http kindling https://your-deployment.example.com/{your-token}/mcp
 ```
 
-Once connected, the nineteen `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
+Once connected, the twenty `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
 
 ---
 
 ## MCP Tools Reference
 
-All nineteen tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
+All twenty tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
 
 Sparks are rendered in responses with a consistent one-line format:
 
@@ -218,6 +218,28 @@ The promotion rate is promoted / archived — the share of *concluded* sparks th
 ### `kindling_tags`
 
 Every tag in use with a count, most used first. Takes no parameters. Check it before inventing a new tag.
+
+---
+
+### `kindling_rename_tag`
+
+Rename a tag across every spark carrying it — and merge two tags by renaming one into the other.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `from` | string | Yes | The tag to rename. Matched case-insensitively, so `Writing` also catches `writing` and `WRITING` |
+| `to` | string | Yes | What to rename it to. Lowercased on write |
+| `confirm_merge` | boolean | No | Required when `to` already exists. Default `false` |
+
+Normalization on write stops *new* fragmentation; it does nothing about the variants already in a store. This is the repair tool — `writing` / `Writing` / `write` as three separate tags means a recall filtered by any one of them silently misses the others.
+
+A plain rename into an unused name is freely reversible: rename it back. A **merge** is not, because afterwards nothing records which sparks carried which tag — so `confirm_merge` is required, the same way `kindling_delete` requires `confirm`. Call `kindling_tags` first so the user hears the counts on both sides before agreeing.
+
+Renaming a tag to a different casing of itself is a no-op and says so, rather than being reported as a merge.
+
+The whole rewrite is one `hgetall` plus one `hset`, not one write per spark.
+
+In the dashboard this lives under **Stats → Tags**, which lists every tag with its count and renames inline.
 
 ---
 
@@ -533,7 +555,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.17.1" }`
+- **Server info:** `{ name: "kindling", version: "0.18.0" }` — read from `package.json`, so it tracks the release automatically.
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
@@ -542,7 +564,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 |---|---|
 | `initialize` | Returns protocol version, capabilities, and server info |
 | `notifications/initialized` | Acknowledged with an empty result |
-| `tools/list` | Returns all nine tool definitions with JSON Schema |
+| `tools/list` | Returns all twenty tool definitions with JSON Schema |
 | `tools/call` | Dispatches to the named handler; returns MCP text content |
 
 ### Error codes
