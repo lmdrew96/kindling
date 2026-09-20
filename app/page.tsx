@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
+import { contentExtent, displayTitle, isLongContent } from '@/lib/spark-utils'
+import { Markdown } from '@/components/markdown'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -67,6 +69,9 @@ function SparkCard({
 }) {
   const isCold = spark.status === 'cold'
   const tags = spark.tags ?? []
+  const long = isLongContent(spark.content)
+  const [expanded, setExpanded] = useState(false)
+  const bodyId = `spark-body-${spark.id}`
 
   return (
     <div
@@ -74,8 +79,41 @@ function SparkCard({
         isCold ? 'bg-surface border-cold/40' : 'bg-surface border-border'
       }`}
     >
-      {/* Content */}
-      <p className="text-sm leading-relaxed text-fg">{spark.content}</p>
+      {/* Content. Long sparks collapse behind their title so a list of them
+          stays scannable; short ones are their own title and render whole. */}
+      {long ? (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            className="group flex items-start gap-2 text-left cursor-pointer"
+          >
+            <span
+              aria-hidden="true"
+              className={`mt-0.5 text-xs text-fg-subtle transition-transform ${expanded ? 'rotate-90' : ''}`}
+            >
+              ▶
+            </span>
+            <span className="flex-1 font-display text-sm font-semibold leading-snug text-fg group-hover:text-primary transition-colors">
+              {displayTitle(spark)}
+            </span>
+          </button>
+
+          {expanded ? (
+            <div id={bodyId} className="pl-5">
+              <Markdown>{spark.content}</Markdown>
+            </div>
+          ) : (
+            <p id={bodyId} className="pl-5 text-xs text-fg-subtle">
+              {contentExtent(spark.content)} — click to expand
+            </p>
+          )}
+        </div>
+      ) : (
+        <Markdown>{spark.content}</Markdown>
+      )}
 
       {/* Tags */}
       {tags.length > 0 && (

@@ -9,6 +9,7 @@ import {
   recallSparks,
   runDecay,
 } from '@/lib/sparks'
+import { displayTitle } from '@/lib/spark-utils'
 
 export const runtime = 'nodejs'
 
@@ -34,6 +35,11 @@ const TOOLS = [
       type: 'object',
       properties: {
         content: { type: 'string', description: 'The spark to capture.' },
+        title: {
+          type: 'string',
+          description:
+            'Short handle for the spark (≤80 chars), shown as the card heading in the dashboard. Supply one whenever content runs longer than a couple of sentences — it is what makes a long spark scannable in a list. Omit for one-line captures, which are their own title.',
+        },
         tags: {
           type: 'array',
           items: { type: 'string' },
@@ -144,6 +150,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         spark_id: { type: 'string', description: 'ID of the spark to update.' },
+        title: { type: 'string', description: 'New short handle for the spark (≤80 chars).' },
         content: { type: 'string', description: 'New content for the spark.' },
         tags: {
           type: 'array',
@@ -180,10 +187,11 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
   switch (name) {
     case 'kindle': {
       const content = args.content as string
+      const title = (args.title as string | undefined) ?? null
       const tags = (args.tags as string[] | undefined) ?? []
       await runDecay(token)
-      const spark = await createSpark(token, content, tags)
-      return text(`Kindled: [${spark.id}] ${spark.content}`)
+      const spark = await createSpark(token, content, tags, title)
+      return text(`Kindled: [${spark.id}] ${displayTitle(spark)}`)
     }
 
     case 'kindling_recall': {
@@ -253,10 +261,12 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
 
     case 'kindling_update': {
       const spark_id = args.spark_id as string
+      const title = args.title as string | undefined
       const content = args.content as string | undefined
       const tags = args.tags as string[] | undefined
-      if (!content && !tags) return text('Provide at least one of: content, tags.')
+      if (!content && !tags && !title) return text('Provide at least one of: title, content, tags.')
       const updated = await updateSpark(token, spark_id, {
+        ...(title ? { title } : {}),
         ...(content ? { content } : {}),
         ...(tags ? { tags } : {}),
       })
@@ -306,7 +316,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.2.1' },
+          serverInfo: { name: 'kindling', version: '0.3.0' },
         })
 
       case 'notifications/initialized':

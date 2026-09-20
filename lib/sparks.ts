@@ -1,19 +1,21 @@
 import { v4 as uuidv4 } from 'uuid'
 import { redis, indexKey } from './redis'
 import type { Spark, SparkStatus } from './types'
+import { DAY_MS, DECAY_THRESHOLD_DAYS, scoreSpark } from './spark-utils'
 
-const DAY_MS = 1000 * 60 * 60 * 24
-const DECAY_THRESHOLD_DAYS = 180
+export { scoreSpark }
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
 export const createSpark = async (
   token: string,
   content: string,
-  tags: string[] = []
+  tags: string[] = [],
+  title: string | null = null
 ): Promise<Spark> => {
   const spark: Spark = {
     id: uuidv4(),
+    title: title?.trim() || null,
     content,
     tags,
     created_at: Date.now(),
@@ -61,22 +63,6 @@ export const reviveSpark = async (token: string, id: string): Promise<Spark | nu
 }
 
 // ─── Recall algorithm ────────────────────────────────────────────────────────
-
-const scoreSpark = (spark: Spark): number => {
-  const now = Date.now()
-
-  const daysSinceCreated = (now - spark.created_at) / DAY_MS
-  const ageScore = Math.min(daysSinceCreated / 365, 1) * 40
-
-  const lastInteraction = spark.last_surfaced_at ?? spark.created_at
-  const daysSinceInteraction = (now - lastInteraction) / DAY_MS
-  const neglectScore = Math.min(daysSinceInteraction / DECAY_THRESHOLD_DAYS, 1) * 40
-
-  // approaches 20 when surface_count=0, halves with each surface
-  const unusedScore = (1 / (spark.surface_count + 1)) * 20
-
-  return ageScore + neglectScore + unusedScore
-}
 
 export const recallSparks = async (
   token: string,

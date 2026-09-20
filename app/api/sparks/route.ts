@@ -24,10 +24,14 @@ export async function POST(req: NextRequest) {
   const token = getToken(req)
   if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
 
-  const { content, tags } = await req.json() as { content: string; tags?: string[] }
+  const { content, tags, title } = await req.json() as {
+    content: string
+    tags?: string[]
+    title?: string
+  }
   if (!content?.trim()) return NextResponse.json({ error: 'content is required' }, { status: 400 })
 
-  const spark = await createSpark(token, content.trim(), tags ?? [])
+  const spark = await createSpark(token, content.trim(), tags ?? [], title ?? null)
   return NextResponse.json(spark, { status: 201 })
 }
 
