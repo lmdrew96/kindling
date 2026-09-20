@@ -159,16 +159,17 @@ Sparks are rendered in responses with a consistent one-line format:
 
 ### `kindle`
 
-Capture a spark of thought, idea, or insight into Kindling.
+Capture a spark — an idea, an aside, a half-formed thought — so it isn't lost when the conversation moves on. The description shipped to clients asks the model to fire this **proactively** on idea-shaped asides rather than waiting to be told to save something; that framing is the whole difference between Kindling and a notes app.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `content` | string | Yes | The spark to capture |
+| `content` | string | Yes | The spark to capture (trimmed; 1–100,000 chars) |
+| `title` | string | No | Short handle shown as the card heading. Supply one for anything longer than a couple of sentences; derived from the first line when omitted |
 | `tags` | string[] | No | Tags to categorize the spark (defaults to `[]`) |
 
 Creates the spark with status `active`, `surface_count` of 0, and no surfacing history. Also runs a decay pass first, so capturing something is an opportunity for the store to notice what's gone stale.
 
-**Returns:** `Kindled: [<id>] <content>`
+**Returns:** `Kindled: [<id>] <title>`
 
 ---
 
@@ -178,7 +179,7 @@ Surface sparks that have been waiting longest and are most in need of attention,
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `limit` | number | No | Max sparks to return (default `5`) |
+| `limit` | number | No | Max sparks to return (default `5`, clamped to `25`) |
 | `context` | string | No | Context hint about the current session or focus area |
 | `tags` | string[] | No | Filter to sparks matching **any** of these tags |
 
@@ -215,6 +216,8 @@ List sparks, optionally filtered by status and/or tag.
 | `status` | `"active"` \| `"cold"` \| `"archived"` | No | Filter by status (omit for all) |
 | `tag` | string | No | Filter to sparks carrying this exact tag |
 | `limit` | number | No | Max sparks to return |
+
+Returns one page at a time with a running `Showing N–M of T` header; pass `offset` to continue through a large store. `limit` defaults to `25` and is clamped there.
 
 Unlike `kindling_recall`, listing is **passive** — it does not mark anything as surfaced or affect scoring. Use it when you want to look without disturbing the decay clock.
 
@@ -303,7 +306,7 @@ Sets status back to `active` and clears `cold_at`. Refuses sparks that aren't cu
 
 ## The Recall Algorithm
 
-`kindling_recall` scores every active spark out of 100 and returns the highest scorers. The scoring lives in `scoreSpark()` in `lib/sparks.ts` and has three components:
+`kindling_recall` scores every active spark out of 100 and returns the highest scorers. The scoring lives in `scoreSpark()` in `lib/spark-utils.ts` (re-exported from `lib/sparks.ts`), so the dashboard and the MCP server rank by the same function and has three components:
 
 ### Age — up to 40 points
 
@@ -358,6 +361,7 @@ type SparkStatus = 'active' | 'cold' | 'archived'
 
 interface Spark {
   id: string                       // uuid v4
+  title: string | null             // short handle; derived from content when null
   content: string                  // the captured thought
   tags: string[]                   // free-form, no taxonomy enforced
   created_at: number               // epoch ms
@@ -427,7 +431,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.3.2" }`
+- **Server info:** `{ name: "kindling", version: "0.3.3" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
