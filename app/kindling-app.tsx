@@ -327,28 +327,40 @@ function SparkCard({
 
           {expanded ? (
             <div id={bodyId} className="pl-5">
-              <Markdown>{spark.content}</Markdown>
+              <Markdown className={chilly ? 'text-sm text-fg-muted' : 'text-[0.9375rem] text-fg'}>
+                {spark.content}
+              </Markdown>
             </div>
           ) : (
-            <p id={bodyId} className="pl-5 text-xs text-fg-subtle">
+            // Same rung-step as the metadata row: fg-subtle was audited
+            // against the untinted card, and the heat wash lightens the
+            // background out from under it.
+            <p
+              id={bodyId}
+              className={`pl-5 text-xs ${
+                heat !== null && !chilly ? 'text-fg-muted' : 'text-fg-subtle'
+              }`}
+            >
               {contentExtent(spark.content)} — click to expand
             </p>
           )}
         </div>
       ) : (
         // The idea is the whole point of the card and used to be its quietest
-        // element — smaller than the buttons sitting under it.
-        <div
-          className={`leading-relaxed ${
+        // element — smaller than the buttons sitting under it. The scale goes
+        // to Markdown directly: it sets its own font-size and colour, so a
+        // wrapper around it would have no effect on the text.
+        <Markdown
+          className={
             hot
               ? 'text-base text-fg'
               : chilly
-                ? 'text-sm text-fg-muted line-clamp-2'
+                ? 'text-sm text-fg-muted'
                 : 'text-[0.9375rem] text-fg'
-          }`}
+          }
         >
-          <Markdown>{spark.content}</Markdown>
-        </div>
+          {spark.content}
+        </Markdown>
       )}
 
       {/* Tags */}

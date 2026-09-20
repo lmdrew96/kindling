@@ -13,9 +13,21 @@ import remarkGfm from 'remark-gfm'
  * only thing that would change that, and it is deliberately not used here, so
  * no separate sanitization pass is needed. Do not add it.
  */
-export function Markdown({ children }: { children: string }) {
+export function Markdown({
+  children,
+  /**
+   * Scale and tone for the body. It lives here rather than on a wrapper because
+   * this div sets font-size and colour explicitly, so an ancestor's classes
+   * lose the cascade — a caller styling the outside of this component silently
+   * has no effect on the text inside it.
+   */
+  className = 'text-sm text-fg',
+}: {
+  children: string
+  className?: string
+}) {
   return (
-    <div className="space-y-2 text-sm leading-relaxed text-fg break-words">
+    <div className={`space-y-2 leading-relaxed break-words ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
