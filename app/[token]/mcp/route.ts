@@ -9,7 +9,14 @@ import {
   recallSparks,
   runDecay,
 } from '@/lib/sparks'
-import { displayTitle } from '@/lib/spark-utils'
+import {
+  contentExtent,
+  displayTitle,
+  isLongContent,
+  isPromoted,
+  relativeAge,
+} from '@/lib/spark-utils'
+import type { Spark } from '@/lib/types'
 import { z } from 'zod'
 import {
   formatZodError,
@@ -109,6 +116,10 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
     'FIRE THIS whenever you watch that happen. If a spark surfaced by kindling_recall visibly turns into work during the session, promote it without being asked — it is the only evidence the system is doing its job, and an un-promoted spark that became something is indistinguishable from one that was abandoned.\n\n' +
     'Write real `notes`. "became the opening of Vertexism Section V" is worth reading in six months; "used it" is not. Promoting also archives the spark, so it stops competing in recall.',
 
+  kindling_get:
+    'Inspect one spark in full — its whole content, every timestamp, and its promotion provenance if it has any.\n\n' +
+    'Use it to drill into something kindling_recall, kindling_list or kindling_search returned as a one-liner: those show the title plus a size hint rather than the whole body, so this is how you actually read a long spark.',
+
   kindling_list:
     'List sparks, filtered by status and/or tag. The plain inventory view — use it when the user wants to see what is there rather than be told what matters. Use kindling_recall instead when the question is "what should I look at?", and kindling_search when they half-remember something specific.\n\n' +
     'Returns a page at a time with a running "showing N of M"; pass `offset` to continue.',
@@ -147,9 +158,56 @@ type ToolArgs = Record<string, unknown>
 /** The validated shape of a given tool's arguments. */
 type Args<T extends ToolName> = z.infer<(typeof toolSchemas)[T]>
 
-const formatSpark = (spark: { id: string; content: string; tags?: string[]; status: string; surface_count: number; created_at: number }) => {
+/**
+ * One line per spark, for list output. Shows the title rather than the whole
+ * body — a long spark would otherwise dump thousands of characters into the
+ * model's context for every row. kindling_get returns the full record.
+ *
+ * surface_count alone is nearly meaningless: "surfaced 3x" reads identically
+ * whether the last one was yesterday or eight months ago, so the date goes
+ * with it.
+ */
+const formatSpark = (spark: Spark): string => {
   const tags = spark.tags ?? []
-  return `[${spark.id}] (${spark.status}) ${spark.content}${tags.length ? ` [${tags.join(', ')}]` : ''} — surfaced ${spark.surface_count}×`
+  const meta = [`captured ${relativeAge(spark.created_at)}`]
+  if (spark.surface_count > 0) {
+    const last = spark.last_surfaced_at ? `, last ${relativeAge(spark.last_surfaced_at)}` : ''
+    meta.push(`surfaced ${spark.surface_count}x${last}`)
+  }
+  if (spark.promoted_to) {
+    meta.push(`promoted to ${spark.promoted_to}${spark.promoted_at ? ` ${relativeAge(spark.promoted_at)}` : ''}`)
+  }
+
+  const extent = isLongContent(spark.content) ? ` (${contentExtent(spark.content)})` : ''
+  return (
+    `[${spark.id}] (${spark.status}) ${displayTitle(spark)}${extent}` +
+    `${tags.length ? ` [${tags.join(', ')}]` : ''} — ${meta.join(' · ')}`
+  )
+}
+
+/** The whole record, for inspecting a single spark. */
+const formatSparkVerbose = (spark: Spark): string => {
+  const tags = spark.tags ?? []
+  const lines = [
+    `[${spark.id}] (${spark.status})`,
+    `Title: ${displayTitle(spark)}${spark.title ? '' : ' (derived from content)'}`,
+    '',
+    spark.content,
+    '',
+    `Tags: ${tags.length ? tags.join(', ') : '(none)'}`,
+    `Captured: ${relativeAge(spark.created_at)}`,
+    spark.last_surfaced_at
+      ? `Last surfaced: ${relativeAge(spark.last_surfaced_at)} (${spark.surface_count}x total)`
+      : `Never surfaced`,
+  ]
+  if (spark.cold_at) lines.push(`Went cold: ${relativeAge(spark.cold_at)}`)
+  if (spark.promoted_to) {
+    lines.push(
+      `Promoted to: ${spark.promoted_to}${spark.promoted_at ? ` (${relativeAge(spark.promoted_at)})` : ''}`
+    )
+    if (spark.promoted_notes) lines.push(`Provenance: ${spark.promoted_notes}`)
+  }
+  return lines.join('\n')
 }
 
 async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): Promise<unknown> {
@@ -193,13 +251,17 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
         status: 'archived',
       })
       if (!updated) return errText(`Spark ${spark_id} not found.`)
-      return text(`Promoted [${spark_id}] → ${target}${notes ? `\nNotes: ${notes}` : ''}`)
+      return text(
+        `Promoted [${spark_id}] ${displayTitle(updated)} → ${target}` +
+          `${notes ? `\nProvenance: ${notes}` : ''}`
+      )
     }
 
     case 'kindling_list': {
-      const { status, tag, limit, offset } = parsed.data as Args<'kindling_list'>
+      const { status, tag, limit, offset, promoted } = parsed.data as Args<'kindling_list'>
       let sparks = await listSparks(token, status)
       if (tag) sparks = sparks.filter((s) => (s.tags ?? []).includes(tag))
+      if (promoted !== undefined) sparks = sparks.filter((s) => isPromoted(s) === promoted)
 
       const total = sparks.length
       const page = sparks.slice(offset, offset + limit)
@@ -225,6 +287,13 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       })
       if (matches.length === 0) return text('No sparks match that search.')
       return text(matches.map(formatSpark).join('\n'))
+    }
+
+    case 'kindling_get': {
+      const { spark_id } = parsed.data as Args<'kindling_get'>
+      const spark = await getSpark(token, spark_id)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
+      return text(formatSparkVerbose(spark))
     }
 
     case 'kindling_archive': {
@@ -329,7 +398,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.6.0' },
+          serverInfo: { name: 'kindling', version: '0.7.0' },
         })
       }
 

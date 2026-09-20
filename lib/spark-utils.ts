@@ -82,3 +82,25 @@ export const contentExtent = (content: string): string => {
   const words = content.trim().split(/\s+/).length
   return `${words} words`
 }
+
+// ─── Time ────────────────────────────────────────────────────────────────────
+
+/** Relative-first, because time blindness makes absolute dates hard to read. */
+export const relativeAge = (ms: number, now: number = Date.now()): string => {
+  const days = Math.floor((now - ms) / DAY_MS)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
+/** The precise timestamp, for a title attribute alongside the relative one. */
+export const absoluteDate = (ms: number): string =>
+  new Date(ms).toLocaleString(undefined, {
+    dateStyle: 'full',
+    timeStyle: 'short',
+  })
+
+/** A spark that was promoted carries provenance; a discarded one doesn't. */
+export const isPromoted = (spark: Spark): boolean => Boolean(spark.promoted_to)

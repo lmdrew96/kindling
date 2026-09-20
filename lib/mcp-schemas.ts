@@ -85,6 +85,12 @@ export const toolSchemas = {
   kindling_list: z.object({
     status: z.enum(['active', 'cold', 'archived']).optional().describe('Filter by status.'),
     tag: z.string().trim().min(1).optional().describe('Filter by a specific tag.'),
+    promoted: z
+      .boolean()
+      .optional()
+      .describe(
+        'true returns only sparks that became something real; false returns only those that did not. Promoted and discarded sparks are both archived, so this is the only way to tell them apart.'
+      ),
     limit: limit(MAX_LIMIT, 'sparks'),
     offset: z
       .number()
@@ -98,6 +104,10 @@ export const toolSchemas = {
   kindling_search: z.object({
     query: z.string().trim().min(1).optional().describe('Text to search for in spark content.'),
     tags: tagList('Filter to sparks matching ANY of these tags.'),
+  }),
+
+  kindling_get: z.object({
+    spark_id: sparkId.describe('ID of the spark to inspect.'),
   }),
 
   kindling_archive: z.object({

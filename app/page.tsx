@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
-import { contentExtent, displayTitle, isLongContent, scoreSpark } from '@/lib/spark-utils'
+import {
+  absoluteDate,
+  contentExtent,
+  displayTitle,
+  isLongContent,
+  isPromoted,
+  relativeAge,
+  scoreSpark,
+} from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
 import { BTN_GHOST, BTN_PRIMARY, INPUT, UUID_RE } from '@/components/ui'
 import { TokenDisplay } from '@/components/token-display'
@@ -43,15 +51,6 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
 
 // ─── Spark card ───────────────────────────────────────────────────────────────
 
-function daysSince(ms: number): string {
-  const days = Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24))
-  if (days === 0) return 'today'
-  if (days === 1) return '1 day ago'
-  if (days < 30) return `${days} days ago`
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`
-  return `${Math.floor(days / 365)}y ago`
-}
-
 function SparkCard({
   spark,
   onArchive,
@@ -64,6 +63,7 @@ function SparkCard({
   onUnarchive?: () => void
 }) {
   const isCold = spark.status === 'cold'
+  const promoted = isPromoted(spark)
   const tags = spark.tags ?? []
   const long = isLongContent(spark.content)
   const [expanded, setExpanded] = useState(false)
@@ -72,7 +72,11 @@ function SparkCard({
   return (
     <div
       className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors ${
-        isCold ? 'bg-surface border-cold/40' : 'bg-surface border-border'
+        isCold
+          ? 'bg-surface border-cold/40'
+          : promoted
+            ? 'bg-surface border-primary/40'
+            : 'bg-surface border-border'
       }`}
     >
       {/* Content. Long sparks collapse behind their title so a list of them
@@ -125,11 +129,39 @@ function SparkCard({
         </div>
       )}
 
+      {/* Promotion record. The whole point of the system, and until now it was
+          written to Redis and never read back anywhere. */}
+      {promoted && (
+        <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs">
+          <p className="text-fg">
+            <span aria-hidden="true">✦</span> Became{' '}
+            <strong className="font-semibold text-primary">{spark.promoted_to}</strong>
+            {spark.promoted_at && (
+              <span className="text-fg-muted"> · {relativeAge(spark.promoted_at)}</span>
+            )}
+          </p>
+          {spark.promoted_notes && (
+            <p className="mt-1 text-fg-muted italic">{spark.promoted_notes}</p>
+          )}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-3 text-xs text-fg-subtle">
-          <span>Captured {daysSince(spark.created_at)}</span>
-          {spark.surface_count > 0 && <span>Surfaced {spark.surface_count}×</span>}
+          <span title={absoluteDate(spark.created_at)}>
+            Captured {relativeAge(spark.created_at)}
+          </span>
+          {spark.surface_count > 0 && (
+            <span
+              title={
+                spark.last_surfaced_at ? absoluteDate(spark.last_surfaced_at) : undefined
+              }
+            >
+              Surfaced {spark.surface_count}×
+              {spark.last_surfaced_at && `, last ${relativeAge(spark.last_surfaced_at)}`}
+            </span>
+          )}
           {isCold && (
             <span className="flex items-center gap-1 text-cold-text">
               <span aria-hidden="true">❄</span> Gone cold
@@ -278,7 +310,12 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
   )
 }
 
-const TABS = ['active', 'cold', 'archived'] as const
+/**
+ * 'promoted' is a view, not a status — promoted sparks are archived too. It
+ * gets its own tab because "I shipped this" and "I gave up on this" were
+ * otherwise indistinguishable in Archived.
+ */
+const TABS = ['active', 'cold', 'archived', 'promoted'] as const
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -308,7 +345,13 @@ const COMPARATORS: Record<SortKey, (a: Spark, b: Spark) => number> = {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-type Tab = SparkStatus
+type Tab = (typeof TABS)[number]
+
+/** Which sparks belong in a given tab. */
+const inTab = (spark: Spark, tab: Tab): boolean =>
+  tab === 'promoted'
+    ? isPromoted(spark)
+    : spark.status === tab && !(tab === 'archived' && isPromoted(spark))
 
 function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const [sparks, setSparks] = useState<Spark[]>([])
@@ -439,7 +482,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }
 
   const filtered = sparks
-    .filter((s) => s.status === tab)
+    .filter((s) => inTab(s, tab))
     .filter((s) =>
       !search || s.content.toLowerCase().includes(search.toLowerCase()) ||
       (s.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
@@ -448,11 +491,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     // the whole premise of the product, so it is also the default here.
     .sort(COMPARATORS[sort])
 
-  const counts: Record<Tab, number> = {
-    active: sparks.filter((s) => s.status === 'active').length,
-    cold: sparks.filter((s) => s.status === 'cold').length,
-    archived: sparks.filter((s) => s.status === 'archived').length,
-  }
+  const counts = Object.fromEntries(
+    TABS.map((t) => [t, sparks.filter((s) => inTab(s, t)).length])
+  ) as Record<Tab, number>
 
   /** Arrow/Home/End move between tabs, per the WAI-ARIA tabs pattern. */
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -471,7 +512,12 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }
 
   const tabLabel = (t: Tab): string => {
-    const labels: Record<Tab, string> = { active: 'Active', cold: 'Cold', archived: 'Archived' }
+    const labels: Record<Tab, string> = {
+      active: 'Active',
+      cold: 'Cold',
+      archived: 'Archived',
+      promoted: 'Promoted',
+    }
     return `${labels[t]} ${counts[t] > 0 ? `(${counts[t]})` : ''}`
   }
 
@@ -679,7 +725,11 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
     },
     archived: {
       heading: 'Nothing archived.',
-      sub: 'Sparks you archive or promote land here.',
+      sub: 'Sparks you let go of land here. Promoted ones get their own tab.',
+    },
+    promoted: {
+      heading: 'Nothing promoted yet.',
+      sub: 'When a spark becomes a project, a draft, or a decision, promote it — this is where you see that it happened.',
     },
   }
 
