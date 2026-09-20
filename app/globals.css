@@ -1,1 +1,92 @@
 @import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Kindling theme tokens
+
+   Palette source: the Kindling palette card (ChaosPatch patch 29d41d9f).
+   Every pairing below was contrast-checked against its actual background;
+   the ratio is noted where it constrains usage. AA = 4.5:1 for normal text,
+   3:1 for large text and non-text UI (WCAG 1.4.11).
+
+   Two constraints worth knowing before you reach for a color:
+     · Plush Topaz fails as text on the background (2.91) — fill/border only.
+     · Aqua Whisper is 3.79 — fine for icons, borders and large text, but
+       small text uses --color-cold-text instead.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Raw palette — the five named colors, unmodified. */
+  --color-marigold: #f0bc3e; /* Light Marigold */
+  --color-aqua: #309faf; /* Aqua Whisper   */
+  --color-topaz: #a87324; /* Plush Topaz    */
+  --color-gleam: #0a3d46; /* Aqua Gleam     */
+  --color-lilac: #4c3e70; /* Eventide Lilac */
+
+  /* Surfaces — Aqua Gleam lifted toward the foreground for elevation. */
+  --color-bg: #0a3d46;
+  --color-surface: #15454d; /* cards, inputs        */
+  --color-surface-raised: #1e4c53; /* hover, nested        */
+  --color-border: #2a555a;
+  --color-border-strong: #3c6265;
+
+  /* Foreground ramp. The palette has no neutral, so this is ADHDesigns Bone
+     mixed toward the background — which lands sage, and sits well with teal.
+     --color-fg-subtle is the AA floor; nothing below it carries meaning. */
+  --color-fg: #ede6d2; /* 9.53 */
+  --color-fg-muted: #b4bcaf; /* 6.08 */
+  --color-fg-subtle: #9eaba1; /* 4.97 — do not go dimmer */
+
+  /* Primary action. Marigold fill takes Gleam text (6.77); Topaz is the
+     pressed/hover gold. Marigold is also safe as accent text (6.77). */
+  --color-primary: #f0bc3e;
+  --color-primary-hover: #a87324;
+  --color-on-primary: #0a3d46;
+
+  /* Cold sparks. Aqua for anything non-text, the lightened tint for labels. */
+  --color-cold: #309faf; /* 3.79 — icons, borders, fills */
+  --color-cold-text: #69b4ba; /* 5.00 — small text            */
+
+  /* Tag pills. Eventide Lilac fill carries Bone at 7.56. */
+  --color-tag-bg: #4c3e70;
+  --color-tag-fg: #ede6d2;
+
+  /* Error. Not in the palette — a warm coral chosen to sit with the golds. */
+  --color-danger: #f2998c; /* 5.49 */
+
+  /* Focus. Marigold on the background is 6.77, well past the 3:1 minimum. */
+  --color-ring: #f0bc3e;
+
+  --font-sans: var(--font-raela), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-kineks), var(--font-raela), ui-sans-serif, sans-serif;
+}
+
+html {
+  background: var(--color-bg);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+}
+
+/* Every interactive element gets a visible keyboard focus ring. The app sets
+   outline-none on inputs for styling; this puts the affordance back. */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Respect the OS setting. Transitions become instant rather than disappearing,
+   so state changes still read as changes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

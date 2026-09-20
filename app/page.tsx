@@ -37,6 +37,14 @@ async function reviveApi(token: string, id: string): Promise<void> {
   })
 }
 
+// ─── Shared class strings ────────────────────────────────────────────────────
+
+const INPUT =
+  'rounded-lg bg-surface border border-border text-fg placeholder:text-fg-subtle outline-none focus:border-border-strong transition-colors'
+
+const BTN_GHOST =
+  'rounded-lg bg-surface border border-border text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors cursor-pointer'
+
 // ─── Spark card ───────────────────────────────────────────────────────────────
 
 function daysSince(ms: number): string {
@@ -62,16 +70,12 @@ function SparkCard({
 
   return (
     <div
-      className="rounded-xl border p-4 flex flex-col gap-3 transition-opacity"
-      style={{
-        background: isCold ? 'rgba(139,189,185,0.04)' : 'rgba(255,255,255,0.03)',
-        borderColor: isCold ? 'rgba(139,189,185,0.18)' : 'rgba(255,255,255,0.07)',
-      }}
+      className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors ${
+        isCold ? 'bg-surface border-cold/40' : 'bg-surface border-border'
+      }`}
     >
       {/* Content */}
-      <p className="text-sm leading-relaxed" style={{ color: '#F7F5FA' }}>
-        {spark.content}
-      </p>
+      <p className="text-sm leading-relaxed text-fg">{spark.content}</p>
 
       {/* Tags */}
       {tags.length > 0 && (
@@ -79,8 +83,7 @@ function SparkCard({
           {tags.map((tag) => (
             <span
               key={tag}
-              className="text-xs px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(136,115,158,0.18)', color: '#88739E', border: '1px solid rgba(136,115,158,0.25)' }}
+              className="text-xs px-2 py-0.5 rounded-full bg-tag-bg text-tag-fg border border-lilac"
             >
               {tag}
             </span>
@@ -90,12 +93,12 @@ function SparkCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 pt-1">
-        <div className="flex items-center gap-3 text-xs" style={{ color: 'rgba(247,245,250,0.3)' }}>
+        <div className="flex items-center gap-3 text-xs text-fg-subtle">
           <span>Captured {daysSince(spark.created_at)}</span>
           {spark.surface_count > 0 && <span>Surfaced {spark.surface_count}×</span>}
           {isCold && (
-            <span className="flex items-center gap-1" style={{ color: '#8CBDB9' }}>
-              ❄ Gone cold
+            <span className="flex items-center gap-1 text-cold-text">
+              <span aria-hidden="true">❄</span> Gone cold
             </span>
           )}
         </div>
@@ -103,18 +106,18 @@ function SparkCard({
         <div className="flex items-center gap-2">
           {isCold && onRevive && (
             <button
+              type="button"
               onClick={onRevive}
-              className="text-xs px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-              style={{ background: 'rgba(139,189,185,0.12)', color: '#8CBDB9', border: '1px solid rgba(139,189,185,0.2)' }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-cold/15 text-cold-text border border-cold/40 hover:bg-cold/25 transition-colors cursor-pointer"
             >
               Revive
             </button>
           )}
           {onArchive && (
             <button
+              type="button"
               onClick={onArchive}
-              className="text-xs px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(247,245,250,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}
+              className={`text-xs px-2.5 py-1 ${BTN_GHOST}`}
             >
               Archive
             </button>
@@ -149,25 +152,25 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6" style={{ background: '#1E1830' }}>
+    <main className="flex min-h-screen items-center justify-center px-6 bg-bg">
       <div className="w-full max-w-md space-y-8 text-center">
         <div>
-          <h1 className="text-3xl font-bold mb-2" style={{ color: '#DFA649' }}>Kindling</h1>
-          <p className="text-sm leading-relaxed" style={{ color: 'rgba(247,245,250,0.4)' }}>
+          <h1 className="font-display text-3xl font-bold mb-2 text-primary">Kindling</h1>
+          <p className="text-sm leading-relaxed text-fg-muted">
             Capture sparks before they fade. Surface them before they go cold.
           </p>
         </div>
 
         <div className="space-y-3 text-left">
           <button
+            type="button"
             onClick={generate}
-            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer transition-colors"
-            style={{ background: '#DFA649', color: '#1E1830' }}
+            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg transition-colors"
           >
             Get my Kindling URL →
           </button>
 
-          <p className="text-center text-xs" style={{ color: 'rgba(247,245,250,0.2)' }}>or</p>
+          <p className="text-center text-xs text-fg-subtle">or</p>
 
           <div className="flex gap-2">
             <input
@@ -175,29 +178,19 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
               onChange={(e) => { setInput(e.target.value); setError('') }}
               onKeyDown={(e) => e.key === 'Enter' && load()}
               placeholder="Paste existing token"
-              className="flex-1 rounded-lg text-sm px-3 py-2.5 outline-none"
-              style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(247,245,250,0.1)',
-                color: '#F7F5FA',
-              }}
+              aria-label="Existing Kindling token"
+              className={`flex-1 text-sm px-3 py-2.5 ${INPUT}`}
             />
             <button
+              type="button"
               onClick={load}
-              className="px-4 rounded-lg text-sm cursor-pointer"
-              style={{
-                background: 'rgba(255,255,255,0.07)',
-                border: '1px solid rgba(247,245,250,0.1)',
-                color: '#F7F5FA',
-              }}
+              className={`px-4 text-sm ${BTN_GHOST}`}
             >
               Load →
             </button>
           </div>
 
-          {error && (
-            <p className="text-xs" style={{ color: '#ff9090' }}>{error}</p>
-          )}
+          {error && <p className="text-xs text-danger">{error}</p>}
         </div>
       </div>
     </main>
@@ -206,7 +199,7 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-type Tab = 'active' | 'cold' | 'archived'
+type Tab = SparkStatus
 
 function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const [sparks, setSparks] = useState<Spark[]>([])
@@ -297,13 +290,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }
 
   return (
-    <main className="min-h-screen" style={{ background: '#1E1830', color: '#F7F5FA' }}>
+    <main className="min-h-screen bg-bg text-fg">
       {/* Toast */}
       {toast && (
-        <div
-          className="fixed top-4 left-1/2 -translate-x-1/2 text-sm px-4 py-2 rounded-lg z-50 pointer-events-none"
-          style={{ background: 'rgba(30,24,48,0.95)', border: '1px solid rgba(247,245,250,0.12)', color: '#F7F5FA' }}
-        >
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 text-sm px-4 py-2 rounded-lg z-50 pointer-events-none bg-surface-raised border border-border-strong text-fg">
           {toast}
         </div>
       )}
@@ -312,19 +302,19 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold" style={{ color: '#DFA649' }}>Kindling</h1>
+          <h1 className="font-display text-xl font-bold text-primary">Kindling</h1>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={copyMcp}
-              className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
-              style={{ background: 'rgba(139,189,185,0.1)', border: '1px solid rgba(139,189,185,0.2)', color: '#8CBDB9' }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-cold/15 border border-cold/40 text-cold-text hover:bg-cold/25 transition-colors cursor-pointer"
             >
               {mcpCopied ? 'Copied ✓' : 'Copy MCP URL'}
             </button>
             <button
+              type="button"
               onClick={onSignOut}
-              className="text-xs cursor-pointer"
-              style={{ color: 'rgba(247,245,250,0.2)', background: 'none', border: 'none' }}
+              className="text-xs px-3 py-1.5 rounded-lg text-fg-subtle hover:text-fg transition-colors cursor-pointer"
             >
               Switch token
             </button>
@@ -332,10 +322,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         </div>
 
         {/* Kindle input */}
-        <div
-          className="rounded-xl p-4 space-y-3"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
+        <div className="rounded-xl p-4 space-y-3 bg-surface border border-border">
           <textarea
             ref={kindleRef}
             value={kindleText}
@@ -344,34 +331,28 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleKindle()
             }}
             placeholder="What's on your mind? Capture it before it fades…"
+            aria-label="Capture a spark"
             rows={3}
-            className="w-full text-sm outline-none resize-none leading-relaxed"
-            style={{ background: 'transparent', color: '#F7F5FA' }}
+            className="w-full text-sm outline-none resize-none leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
           />
           <div className="flex gap-2 items-center">
             <input
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               placeholder="Tags (comma-separated)"
-              className="flex-1 text-xs px-3 py-2 rounded-lg outline-none"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                color: 'rgba(247,245,250,0.6)',
-              }}
+              aria-label="Tags, comma separated"
+              className={`flex-1 text-xs px-3 py-2 ${INPUT}`}
             />
             <button
+              type="button"
               onClick={handleKindle}
               disabled={kindling || !kindleText.trim()}
-              className="text-sm font-semibold px-4 py-2 rounded-lg cursor-pointer transition-opacity disabled:opacity-40"
-              style={{ background: '#DFA649', color: '#1E1830' }}
+              className="text-sm font-semibold px-4 py-2 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
             >
               {kindling ? 'Kindling…' : 'Kindle'}
             </button>
           </div>
-          <p className="text-xs" style={{ color: 'rgba(247,245,250,0.18)' }}>
-            ⌘↵ to submit
-          </p>
+          <p className="text-xs text-fg-subtle">⌘↵ to submit</p>
         </div>
 
         {/* Search */}
@@ -379,12 +360,8 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search sparks…"
-          className="w-full text-sm px-4 py-2.5 rounded-xl outline-none"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            color: '#F7F5FA',
-          }}
+          aria-label="Search sparks"
+          className={`w-full text-sm px-4 py-2.5 rounded-xl ${INPUT}`}
         />
 
         {/* Tabs */}
@@ -392,13 +369,13 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           {(['active', 'cold', 'archived'] as Tab[]).map((t) => (
             <button
               key={t}
+              type="button"
               onClick={() => setTab(t)}
-              className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
-              style={{
-                background: tab === t ? 'rgba(223,166,73,0.15)' : 'transparent',
-                color: tab === t ? '#DFA649' : 'rgba(247,245,250,0.35)',
-                border: tab === t ? '1px solid rgba(223,166,73,0.25)' : '1px solid transparent',
-              }}
+              className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer border transition-colors ${
+                tab === t
+                  ? 'bg-primary/15 text-primary border-primary/40 font-semibold'
+                  : 'bg-transparent text-fg-subtle border-transparent hover:text-fg-muted'
+              }`}
             >
               {tabLabel(t)}
             </button>
@@ -407,9 +384,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
         {/* Sparks list */}
         {loading ? (
-          <p className="text-sm py-8 text-center" style={{ color: 'rgba(247,245,250,0.3)' }}>
-            Loading your sparks…
-          </p>
+          <p className="text-sm py-8 text-center text-fg-subtle">Loading your sparks…</p>
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={!!search} />
         ) : (
@@ -434,7 +409,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
   if (hasSearch) {
     return (
-      <p className="text-sm py-8 text-center" style={{ color: 'rgba(247,245,250,0.3)' }}>
+      <p className="text-sm py-8 text-center text-fg-subtle">
         No sparks match that search.
       </p>
     )
@@ -459,8 +434,8 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
 
   return (
     <div className="py-12 text-center space-y-2">
-      <p className="text-sm font-medium" style={{ color: 'rgba(247,245,250,0.5)' }}>{heading}</p>
-      <p className="text-xs" style={{ color: 'rgba(247,245,250,0.25)' }}>{sub}</p>
+      <p className="text-sm font-medium text-fg-muted">{heading}</p>
+      <p className="text-xs text-fg-subtle">{sub}</p>
     </div>
   )
 }

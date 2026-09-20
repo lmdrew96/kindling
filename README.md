@@ -427,7 +427,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** `2024-11-05`
-- **Server info:** `{ name: "kindling", version: "0.1.2" }`
+- **Server info:** `{ name: "kindling", version: "0.2.0" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
@@ -455,7 +455,13 @@ A malformed token short-circuits before any JSON-RPC handling and returns a plai
 
 ## Web Dashboard
 
-A single-page client component at `app/page.tsx`, in the ADHDesigns palette (deep dark `#1E1830`, amber `#DFA649`, sage teal `#8CBDB9`, mauve purple `#88739E` tags).
+A single-page client component at `app/page.tsx`. All color comes from theme tokens defined in `app/globals.css` — the component contains no hardcoded color values.
+
+**Palette:** Aqua Gleam `#0A3D46` (background), Light Marigold `#F0BC3E` (primary/CTA), Aqua Whisper `#309FAF` (cold sparks), Eventide Lilac `#4C3E70` (tag pills), Plush Topaz `#A87324` (hover/pressed gold). The foreground ramp is ADHDesigns Bone `#EDE6D2` mixed toward the background.
+
+Every pairing is contrast-checked and the ratios are documented inline in `globals.css`. Two constraints that the token names encode: Plush Topaz fails as text on the background (2.91), so it's fill-and-border only; Aqua Whisper is 3.79, fine for icons, borders and large text but not small text — which is why `--color-cold-text` exists as a lightened tint (5.00).
+
+Type is Raela Grotesque for body and Kineks Round for display, loaded from `branding/fonts/` via `next/font/local`.
 
 **Token gate** — first visit offers two paths: generate a fresh token, or paste an existing one to load a namespace on another device. Either way it's persisted to `localStorage` and the gate doesn't reappear.
 
@@ -512,7 +518,8 @@ kindling/
 │   ├── api/sparks/route.ts    # REST API backing the dashboard
 │   ├── page.tsx               # Token gate + dashboard (client component)
 │   ├── layout.tsx             # Root layout and metadata
-│   └── globals.css            # Tailwind v4 import
+│   └── globals.css            # Tailwind v4 @theme — all color/type tokens
+├── branding/fonts/            # Raela Grotesque + Kineks Round (local fonts)
 ├── lib/
 │   ├── sparks.ts              # CRUD, recall scoring, decay — the core logic
 │   ├── redis.ts               # Upstash client + key helpers
