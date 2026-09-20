@@ -6,7 +6,7 @@ Kindling is an idea inbox with a memory. You capture a half-formed thought mid-c
 
 It runs as a Next.js app that serves two things from one deployment:
 
-- **An MCP server** at `/{token}/mcp` — twenty tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
+- **An MCP server** at `/{token}/mcp` — nineteen tools Claude (or any MCP client) can call to kindle, recall, promote, search, and prune sparks.
 - **A web dashboard** at `/` — a browser GUI over the same data, for when you'd rather see everything at once than ask for it.
 
 ---
@@ -141,13 +141,13 @@ https://your-deployment.example.com/{your-token}/mcp
 claude mcp add --transport http kindling https://your-deployment.example.com/{your-token}/mcp
 ```
 
-Once connected, the twenty `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
+Once connected, the nineteen `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
 
 ---
 
 ## MCP Tools Reference
 
-All twenty tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
+All nineteen tools operate within the namespace of the token in the request path. Every tool returns MCP text content — a human-readable string, not structured JSON.
 
 Sparks are rendered in responses with a consistent one-line format:
 
@@ -204,6 +204,87 @@ Mark a spark as promoted — moved into a project, task, or note.
 Sets `promoted_to`, `promoted_at`, and `promoted_notes`, and moves the spark to `archived`. Promotion is a terminal state — the spark leaves the recall pool but keeps its full history.
 
 **Returns:** `Promoted [<id>] → <target>` plus notes if provided, or a not-found message.
+
+---
+
+### `kindling_stats`
+
+Counts by status, promotion rate, capture cadence, oldest active and most neglected spark. Takes no parameters.
+
+The promotion rate is promoted / archived — the share of *concluded* sparks that became something. Deliberately not divided by total, which would make the number fall every time you capture.
+
+---
+
+### `kindling_tags`
+
+Every tag in use with a count, most used first. Takes no parameters. Check it before inventing a new tag.
+
+---
+
+### `kindling_find_duplicates`
+
+Near-duplicate pairs, closest first.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `threshold` | number | No | 0.3–1.0, default `0.6`. 1 is identical wording |
+
+Similarity is Jaccard overlap of distinctive words. `kindle` runs the same check on capture: identical content is refused (pass `allow_duplicate: true` to override), a near match is captured but flagged.
+
+---
+
+### `kindling_batch_archive`
+
+Archive many sparks in one call — one `hgetall` plus one `hset` rather than two round trips each.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `spark_ids` | string[] (uuid) | Yes | 1–100 ids |
+
+---
+
+### `kindling_snooze`
+
+Hold a spark out of recall without archiving it. Snoozed sparks stay `active`, are exempt from decay while they wait, and still appear in `kindling_list`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `spark_id` | string (uuid) | Yes | The spark to snooze |
+| `days` | number | Yes | 1–1095 |
+
+---
+
+### `kindling_set_standing`
+
+Mark a spark as a standing intention, exempt from the decay clock forever — or put it back on the clock. Marking a cold spark standing also revives it.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `spark_id` | string (uuid) | Yes | The spark |
+| `standing` | boolean | Yes | `true` exempts it, `false` restores the clock |
+
+---
+
+### `kindling_settings`
+
+Read or change the decay window. Call with no arguments to read.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `decay_days` | number | No | 7–1095, default `180` |
+
+The same number sets `runDecay`'s threshold and `scoreSpark`'s neglect denominator, so a spark reaches its highest score exactly as it goes cold.
+
+---
+
+### `kindling_delete`
+
+Permanently remove a spark. No undo, no trash — prefer `kindling_archive`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `spark_id` | string (uuid) | Yes | The spark to delete |
+| `confirm` | `true` | Yes | Must be the literal `true` |
 
 ---
 
@@ -452,7 +533,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.17.0" }`
+- **Server info:** `{ name: "kindling", version: "0.17.1" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
@@ -564,12 +645,14 @@ The whole system is a little over 1,000 lines. `lib/sparks.ts` is where the beha
 
 Honest notes on the current state:
 
-- **`zod` is an unused dependency.** Tool arguments are cast from `Record<string, unknown>` rather than parsed, so malformed arguments from an MCP client fail at use rather than at the boundary.
 - **`sparkKey()` in `lib/redis.ts` is dead code** — a leftover from a per-key storage design that the single-hash layout replaced.
-- **`kindling_recall`'s `context` parameter is decorative.** It's in the schema and accepted, but nothing reads it.
-- **No pagination anywhere.** Every list operation loads the full hash into memory.
+- **Every operation loads the full hash into memory.** `kindling_list` pages over that array, so model context is bounded, but the read itself is not — this is the thing that will need an index first if a store ever gets large.
+- **`findDuplicatePairs` is O(n²)** over the store. Fine at current scale, and the per-capture check in `kindle` is O(n), but it's the first thing here that won't scale to thousands of sparks.
 - **No rate limiting** on either the MCP or REST surface.
-- **`PATCH /api/sparks` doesn't validate its body** against the `Spark` shape — see the note in the [HTTP API Reference](#http-api-reference).
+- **The dashboard renders nothing server-side.** `Home` gates on a `localStorage` read, so the served HTML has an empty body and the page is blank until hydration.
+- **No accounts.** The token is the account: no email, no password, no recovery. Export early and often.
+
+Fixed since this list was written: `zod` now guards every MCP tool input and the `PATCH /api/sparks` body; `kindling_recall`'s `context` parameter biases the ranking rather than being decorative.
 
 ---
 
