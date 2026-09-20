@@ -11,18 +11,23 @@ import { BTN_GHOST, INPUT } from '@/components/ui'
  * Normalization on write stops new fragmentation, but a store that already
  * contains "writing", "Writing" and "write" has no way to be fixed — and no
  * way to even see the problem, since nothing listed tags with their counts.
- * Listing them side by side is most of the value here; renaming is the rest.
+ * Listing them side by side is most of the value here; renaming and removing
+ * are the rest.
  */
 export function TagManager({
   sparks,
   onRename,
+  onRemove,
 }: {
   sparks: Spark[]
   /** Resolves once the rewrite has landed, so the row can close. */
   onRename: (from: string, to: string) => Promise<void>
+  /** Strips the tag from every spark carrying it. Resolves once it has landed. */
+  onRemove: (tag: string) => Promise<void>
 }) {
   const counts = tagCounts(sparks)
   const [editing, setEditing] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -36,8 +41,19 @@ export function TagManager({
   }
 
   const open = (tag: string) => {
+    setConfirming(null)
     setEditing(tag)
     setDraft(tag)
+  }
+
+  const remove = async (tag: string) => {
+    setBusy(true)
+    try {
+      await onRemove(tag)
+      setConfirming(null)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const target = normalizeTag(draft)
@@ -100,6 +116,28 @@ export function TagManager({
                 </p>
               )}
             </div>
+          ) : confirming === tag ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="flex-1 min-w-48 text-xs text-fg-muted">
+                Remove &ldquo;{tag}&rdquo; from {count} spark{count === 1 ? '' : 's'}? The sparks
+                stay — only the tag goes.
+              </p>
+              <button
+                type="button"
+                onClick={() => void remove(tag)}
+                disabled={busy}
+                className="text-xs px-3 min-h-11 rounded-lg border border-cold/60 bg-cold/10 text-cold-text hover:bg-cold/20 disabled:opacity-40 transition-colors cursor-pointer"
+              >
+                {busy ? 'Removing…' : 'Remove'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(null)}
+                className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
+              >
+                Cancel
+              </button>
+            </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 min-w-0">
@@ -108,13 +146,26 @@ export function TagManager({
                 </span>
                 <span className="text-xs text-fg-subtle">{count}</span>
               </span>
-              <button
-                type="button"
-                onClick={() => open(tag)}
-                className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
-              >
-                Rename
-              </button>
+              <span className="flex shrink-0 items-center">
+                <button
+                  type="button"
+                  onClick={() => open(tag)}
+                  className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(null)
+                    setConfirming(tag)
+                  }}
+                  aria-label={`Remove the tag ${tag} from all ${count} sparks carrying it`}
+                  className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-cold-text transition-colors cursor-pointer"
+                >
+                  Remove
+                </button>
+              </span>
             </div>
           )}
         </li>

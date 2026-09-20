@@ -291,6 +291,27 @@ In the dashboard this lives under **Stats → Tags**, which lists every tag with
 
 ---
 
+### `kindling_remove_tag`
+
+Strip a tag from every spark carrying it. The sparks themselves are untouched.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tag` | string | Yes | The tag to remove. Matched case-insensitively |
+| `confirm` | boolean | No | Required, because one call can touch the whole store. Default `false` |
+
+For a tag that should never have existed — a typo you do not want merged anywhere, an abandoned scheme, a label that stopped meaning anything. Renaming it into another tag is *not* the same thing: that merges, and leaves the spark carrying a tag you did not ask for.
+
+Unlike a merge this is cleanly reversible, because nothing is conflated. The ids that lost the tag are reported back, so `kindling_update` can put it back on exactly those — and the dashboard offers a real Undo for the same reason.
+
+`confirm` is still required: call `kindling_tags` first and tell the user how many sparks will lose the tag.
+
+One `hgetall` plus one `hset`, like the rename.
+
+In the dashboard this is the **Remove** button beside Rename under **Stats → Tags**, with the affected count shown before you commit.
+
+---
+
 ### `kindling_find_duplicates`
 
 Near-duplicate pairs, closest first.

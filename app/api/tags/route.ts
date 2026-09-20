@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renameTag } from '@/lib/sparks'
+import { addTagToMany, removeTag, renameTag } from '@/lib/sparks'
 
 export const runtime = 'nodejs'
 
@@ -44,4 +44,55 @@ export async function PATCH(req: NextRequest) {
   const { from, to, restrict_to } = parsed.data
   const result = await renameTag(token, from, to, restrict_to)
   return NextResponse.json(result)
+}
+
+const RemoveBody = z.object({ tag: z.string().trim().min(1).max(100) }).strict()
+
+/**
+ * Strip a tag from every spark carrying it.
+ *
+ * Separate from PATCH rather than folded in as a rename-to-nothing, because
+ * the two have different reversibility stories and the caller should not be
+ * able to confuse them: a rename may silently be a merge, this never is.
+ */
+export async function DELETE(req: NextRequest) {
+  const token = getToken(req)
+  if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+
+  const parsed = RemoveBody.safeParse(await req.json())
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid request', detail: parsed.error.issues.map((i) => i.message).join('; ') },
+      { status: 400 }
+    )
+  }
+
+  const changed = await removeTag(token, parsed.data.tag)
+  return NextResponse.json({ changed })
+}
+
+const RestoreBody = z
+  .object({
+    tag: z.string().trim().min(1).max(100),
+    /** Exactly the sparks a DELETE stripped — this is the undo half. */
+    ids: z.array(z.string().uuid()).min(1).max(1000),
+  })
+  .strict()
+
+/** Put a tag back on specific sparks. Exists to undo DELETE, nothing else. */
+export async function POST(req: NextRequest) {
+  const token = getToken(req)
+  if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+
+  const parsed = RestoreBody.safeParse(await req.json())
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid request', detail: parsed.error.issues.map((i) => i.message).join('; ') },
+      { status: 400 }
+    )
+  }
+
+  const { tag, ids } = parsed.data
+  const changed = await addTagToMany(token, tag, ids)
+  return NextResponse.json({ changed })
 }

@@ -147,6 +147,65 @@ export const renameTag = async (
 }
 
 /**
+ * Strip a tag from every spark carrying it, in one hgetall plus one hset.
+ *
+ * The asymmetry with a merge is what makes this safe to offer an Undo for:
+ * removing conflates nothing, so the exact inverse is "put this tag back on
+ * these ids" — see `addTagToMany`. The returned ids are that set.
+ */
+export const removeTag = async (token: string, tag: string): Promise<string[]> => {
+  const tagNorm = normalizeTag(tag)
+  if (!tagNorm) return []
+
+  const all = await redis.hgetall<Record<string, Spark>>(indexKey(token))
+  if (!all) return []
+
+  const updates: Record<string, Spark> = {}
+  for (const [id, spark] of Object.entries(all)) {
+    if (!spark) continue
+    if (!hasTag(spark, tagNorm)) continue
+    updates[id] = {
+      ...spark,
+      tags: (spark.tags ?? []).filter((t) => normalizeTag(t) !== tagNorm),
+    }
+  }
+
+  const changed = Object.keys(updates)
+  if (changed.length > 0) await redis.hset(indexKey(token), updates)
+  return changed
+}
+
+/**
+ * Add one tag to a specific set of sparks.
+ *
+ * Takes ids rather than a predicate because its whole job is reversing
+ * `removeTag`: the undo has to touch exactly the sparks the strip touched, not
+ * every spark that would qualify for the tag now.
+ */
+export const addTagToMany = async (
+  token: string,
+  tag: string,
+  ids: string[]
+): Promise<string[]> => {
+  const tagNorm = normalizeTag(tag)
+  if (!tagNorm || ids.length === 0) return []
+
+  const all = await redis.hgetall<Record<string, Spark>>(indexKey(token))
+  if (!all) return []
+
+  const updates: Record<string, Spark> = {}
+  for (const id of ids) {
+    const spark = all[id]
+    if (!spark || hasTag(spark, tagNorm)) continue
+    updates[id] = { ...spark, tags: normalizeTags([...(spark.tags ?? []), tagNorm]) }
+  }
+
+  const changed = Object.keys(updates)
+  if (changed.length > 0) await redis.hset(indexKey(token), updates)
+  return changed
+}
+
+/**
  * Permanently remove a spark. Everything else in Kindling is soft; this is the
  * one operation with no way back, which is why nothing calls it without an
  * explicit confirmation from the user.

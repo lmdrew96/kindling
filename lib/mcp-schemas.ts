@@ -221,6 +221,21 @@ export const toolSchemas = {
       ),
   }),
 
+  kindling_remove_tag: z.object({
+    tag: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('The tag to strip from every spark carrying it. Matched case-insensitively.'),
+    confirm: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'Required, because this touches every spark carrying the tag in one pass. Call kindling_tags first, tell the user exactly how many sparks will lose the tag, and only set this once they have agreed.'
+      ),
+  }),
+
   kindling_archive: z.object({
     spark_id: sparkId.describe('ID of the spark to archive.'),
   }),

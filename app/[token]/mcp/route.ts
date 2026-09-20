@@ -7,6 +7,7 @@ import {
   archiveSpark,
   archiveSparks,
   deleteSpark,
+  removeTag,
   renameTag,
   reviveSpark,
   recallSparks,
@@ -182,6 +183,11 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
     'Rename a tag across every spark that carries it — and merge two tags by renaming one into the other.\n\n' +
     'Tag normalization only stops NEW fragmentation; it does nothing about the variants already in the store. This is the repair tool. Reach for it when kindling_tags shows the same idea split across "writing", "Writing" and "write", or when the user says a tag should have been called something else.\n\n' +
     'A plain rename into an unused name is freely reversible — rename it back. A MERGE is not, because afterwards there is no way to tell which sparks originally carried which tag, so `confirm_merge` is required and should only be set after the user has agreed to it. Check kindling_tags first so you can tell them how many sparks each side has.',
+
+  kindling_remove_tag:
+    'Strip a tag from every spark carrying it, leaving the sparks themselves untouched.\n\n' +
+    'This is the tool for a tag that should never have existed — a typo the user does not want merged anywhere, a scheme they have abandoned, a label that stopped meaning anything. Renaming it into another tag is NOT the same thing: that merges, and leaves the sparks carrying a tag the user did not ask for.\n\n' +
+    'Unlike a merge this is cleanly reversible, because nothing is conflated — the sparks that lost the tag are reported back, and kindling_update can put it back on exactly those. Still requires `confirm`, since one call can touch every spark in the store: check kindling_tags first and tell the user the count.',
 
   kindling_archive:
     'Archive a spark that is no longer relevant, so it stops competing for attention in recall.\n\n' +
@@ -559,6 +565,41 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       const removed = await deleteSpark(token, spark_id)
       if (!removed) return errText(`Spark ${spark_id} could not be deleted.`)
       return text(`Deleted [${spark_id}] ${title}. This cannot be undone.`)
+    }
+
+    case 'kindling_remove_tag': {
+      const { tag, confirm } = parsed.data as Args<'kindling_remove_tag'>
+
+      const all = await listSparks(token)
+      const carriers = all.filter((s) => hasTag(s, tag))
+      if (carriers.length === 0) {
+        return errText(
+          `No sparks carry the tag "${tag}". Call kindling_tags to see what is actually in use.`
+        )
+      }
+
+      // One call can touch the whole store, so the count goes to the user
+      // before the write happens, not after.
+      if (!confirm) {
+        return errText(
+          `"${normalizeTag(tag)}" is on ${carriers.length} spark${carriers.length === 1 ? '' : 's'}. ` +
+            `Removing it strips the tag from all of them in one pass. Tell the user that count, ` +
+            `and call again with confirm: true if they want it. The sparks themselves are not touched, ` +
+            `and the change can be reversed afterwards.`
+        )
+      }
+
+      const changed = await removeTag(token, tag)
+      if (changed.length === 0) {
+        return errText(`Nothing changed — "${tag}" does not appear to be in use.`)
+      }
+
+      return text(
+        `Removed "${normalizeTag(tag)}" from ${changed.length} spark${changed.length === 1 ? '' : 's'}.\n\n` +
+          `Reversible: kindling_update with tags ["${normalizeTag(tag)}"] puts it back on any of ` +
+          `these ids.\n` +
+          changed.map((id) => `  ${id}`).join('\n')
+      )
     }
 
     case 'kindling_archive': {

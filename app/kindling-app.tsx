@@ -100,6 +100,25 @@ async function renameTagApi(
   return res.json()
 }
 
+async function removeTagApi(token: string, tag: string): Promise<{ changed: string[] }> {
+  const res = await fetch(`/api/tags?token=${token}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag }),
+  })
+  if (!res.ok) throw new Error('Failed to remove tag')
+  return res.json()
+}
+
+async function restoreTagApi(token: string, tag: string, ids: string[]): Promise<void> {
+  const res = await fetch(`/api/tags?token=${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag, ids }),
+  })
+  if (!res.ok) throw new Error('Failed to restore tag')
+}
+
 async function fetchPrefs(token: string): Promise<{ decayThresholdDays: number }> {
   const res = await fetch(`/api/prefs?token=${token}`)
   if (!res.ok) throw new Error('Failed to load settings')
@@ -958,6 +977,34 @@ function Dashboard({
     }
   }
 
+  /**
+   * Also a store-wide rewrite, so it re-reads too. Unlike a merge this is
+   * always undoable: nothing is conflated, so putting the tag back on exactly
+   * the sparks that lost it restores the previous state precisely.
+   */
+  const handleRemoveTag = async (tag: string) => {
+    try {
+      const { changed } = await removeTagApi(token, tag)
+      if (changed.length === 0) {
+        showToast('Nothing to remove.')
+        return
+      }
+      await load()
+      const what = `${changed.length} spark${changed.length === 1 ? '' : 's'}`
+      showToast(`Removed "${tag}" from ${what}.`, {
+        label: 'Undo',
+        run: () => {
+          dismissToast()
+          void restoreTagApi(token, tag, changed)
+            .then(load)
+            .catch(() => showToast("Couldn't undo that removal."))
+        },
+      })
+    } catch {
+      showToast("Couldn't remove that tag.")
+    }
+  }
+
   const handleDecayChange = async (days: number) => {
     const previous = decayDays
     setDecayDays(days)
@@ -1319,6 +1366,7 @@ function Dashboard({
             decayDays={decayDays}
             onDecayChange={(d) => void handleDecayChange(d)}
             onRenameTag={handleRenameTag}
+            onRemoveTag={handleRemoveTag}
             onClose={() => setShowStats(false)}
           />
         )}

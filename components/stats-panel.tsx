@@ -16,12 +16,14 @@ export function StatsPanel({
   decayDays,
   onDecayChange,
   onRenameTag,
+  onRemoveTag,
   onClose,
 }: {
   sparks: Spark[]
   decayDays: number
   onDecayChange: (days: number) => void
   onRenameTag: (from: string, to: string) => Promise<void>
+  onRemoveTag: (tag: string) => Promise<void>
   onClose: () => void
 }) {
   const s = computeStats(sparks)
@@ -107,7 +109,7 @@ export function StatsPanel({
           this is already the panel that shows the shape of the store. */}
       <div className="border-t border-border pt-3 space-y-2">
         <h3 className="font-display text-xs font-bold text-fg">Tags</h3>
-        <TagManager sparks={sparks} onRename={onRenameTag} />
+        <TagManager sparks={sparks} onRename={onRenameTag} onRemove={onRemoveTag} />
       </div>
     </section>
   )
