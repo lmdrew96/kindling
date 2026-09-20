@@ -5,6 +5,8 @@ import {
   updateSpark,
   listSparks,
   archiveSpark,
+  archiveSparks,
+  deleteSpark,
   reviveSpark,
   recallSparks,
   runDecay,
@@ -137,6 +139,14 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   kindling_export:
     'Export the whole corpus as markdown or JSON — every spark, with tags, timestamps and promotion provenance.\n\n' +
     'Offer it whenever the user talks about backing up, moving their notes elsewhere, or worries about losing things. Until Kindling has accounts, one token in one browser is the only handle on everything they have captured, so a copy elsewhere is genuinely valuable. markdown pastes into a note; json round-trips exactly.',
+
+  kindling_batch_archive:
+    'Archive many sparks in one call.\n\n' +
+    'Use it for the end of a kindling_dig triage session, or whenever the user has decided about several sparks at once. Archiving one at a time is the executive-function tax the app exists to reduce, reproduced inside the app. Reversible — kindling_update can set any of them back to active.',
+
+  kindling_delete:
+    'Permanently delete a spark. There is no undo and no trash.\n\n' +
+    'Only ever call this when the user has explicitly asked to delete something — a stray capture, something they would rather not have written down. For everything else use kindling_archive, which is reversible and keeps it out of recall just as effectively. If they said "get rid of this", ask which they mean before calling.',
 
   kindling_stats:
     'Counts by status, promotion rate, capture cadence, and the oldest and most neglected active sparks.\n\n' +
@@ -369,6 +379,29 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
       )
     }
 
+    case 'kindling_batch_archive': {
+      const { spark_ids } = parsed.data as Args<'kindling_batch_archive'>
+      const archived = await archiveSparks(token, spark_ids)
+      if (archived.length === 0) {
+        return errText('Nothing archived — those ids are unknown or already archived.')
+      }
+      const skipped = spark_ids.length - archived.length
+      return text(
+        `Archived ${archived.length} spark${archived.length === 1 ? '' : 's'}.` +
+          (skipped > 0 ? ` ${skipped} skipped (unknown or already archived).` : '')
+      )
+    }
+
+    case 'kindling_delete': {
+      const { spark_id } = parsed.data as Args<'kindling_delete'>
+      const spark = await getSpark(token, spark_id)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
+      const title = displayTitle(spark)
+      const removed = await deleteSpark(token, spark_id)
+      if (!removed) return errText(`Spark ${spark_id} could not be deleted.`)
+      return text(`Deleted [${spark_id}] ${title}. This cannot be undone.`)
+    }
+
     case 'kindling_archive': {
       const { spark_id } = parsed.data as Args<'kindling_archive'>
       const spark = await getSpark(token, spark_id)
@@ -486,7 +519,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.11.0' },
+          serverInfo: { name: 'kindling', version: '0.12.0' },
         })
       }
 

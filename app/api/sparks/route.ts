@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createSpark, listSparks, updateSpark } from '@/lib/sparks'
+import { archiveSparks, createSpark, deleteSpark, listSparks, updateSpark } from '@/lib/sparks'
 import { exportFilename, toJson, toMarkdown } from '@/lib/export'
 import type { SparkStatus } from '@/lib/types'
 
@@ -88,4 +88,34 @@ export async function PATCH(req: NextRequest) {
   if (!spark) return NextResponse.json({ error: 'Spark not found' }, { status: 404 })
 
   return NextResponse.json(spark)
+}
+
+/** Bulk archive. One round trip rather than one request per spark. */
+export async function PUT(req: NextRequest) {
+  const token = getToken(req)
+  if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+
+  const parsed = z
+    .object({ spark_ids: z.array(z.string().uuid()).min(1).max(200) })
+    .strict()
+    .safeParse(await req.json())
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+
+  const archived = await archiveSparks(token, parsed.data.spark_ids)
+  return NextResponse.json({ archived })
+}
+
+/** Permanent. The only hard-delete path in the app. */
+export async function DELETE(req: NextRequest) {
+  const token = getToken(req)
+  if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  const removed = await deleteSpark(token, id)
+  if (!removed) return NextResponse.json({ error: 'Spark not found' }, { status: 404 })
+  return NextResponse.json({ deleted: id })
 }

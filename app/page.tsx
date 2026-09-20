@@ -43,6 +43,16 @@ async function kindleApi(token: string, content: string, tags: string[]): Promis
  * here, so there is one place that checks res.ok — the previous archive/revive
  * helpers ignored the response entirely and reported success unconditionally.
  */
+async function batchArchiveApi(token: string, ids: string[]): Promise<string[]> {
+  const res = await fetch(`/api/sparks?token=${token}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spark_ids: ids }),
+  })
+  if (!res.ok) throw new Error('Failed to archive selection')
+  return (await res.json()).archived as string[]
+}
+
 async function setStatusApi(token: string, id: string, status: SparkStatus): Promise<void> {
   const res = await fetch(`/api/sparks?token=${token}&id=${id}`, {
     method: 'PATCH',
@@ -61,6 +71,8 @@ function SparkCard({
   onRevive,
   onUnarchive,
   showStatus,
+  selected,
+  onToggleSelected,
 }: {
   spark: Spark
   onArchive?: () => void
@@ -68,6 +80,8 @@ function SparkCard({
   onUnarchive?: () => void
   /** Search spans every status, so a hit has to say where it lives. */
   showStatus?: boolean
+  selected?: boolean
+  onToggleSelected?: () => void
 }) {
   const isCold = spark.status === 'cold'
   const promoted = isPromoted(spark)
@@ -86,6 +100,18 @@ function SparkCard({
             : 'bg-surface border-border'
       }`}
     >
+      {onToggleSelected && (
+        <label className="flex items-center gap-2 text-xs text-fg-subtle cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            onChange={onToggleSelected}
+            className="size-4 accent-[var(--color-primary)] cursor-pointer"
+          />
+          <span className="sr-only">Select this spark</span>
+        </label>
+      )}
+
       {/* Content. Long sparks collapse behind their title so a list of them
           stays scannable; short ones are their own title and render whole. */}
       {long ? (
@@ -380,6 +406,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [mcpCopied, setMcpCopied] = useState(false)
   const [confirmForget, setConfirmForget] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -526,6 +553,39 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   const handleUnarchive = (spark: Spark) =>
     changeStatus(spark, 'active', 'Unarchived — back in the fire.')
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  /** Archiving thirty sparks was thirty clicks and thirty toasts. */
+  const archiveSelected = async () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const previous = sparks
+    setSparks((prev) =>
+      prev.map((s) => (selected.has(s.id) ? { ...s, status: 'archived' as SparkStatus } : s))
+    )
+    setSelected(new Set())
+    try {
+      const archived = await batchArchiveApi(token, ids)
+      showToast(`Archived ${archived.length} spark${archived.length === 1 ? '' : 's'}.`, {
+        label: 'Undo',
+        run: async () => {
+          dismissToast()
+          setSparks(previous)
+          await Promise.all(archived.map((id) => setStatusApi(token, id, 'active')))
+        },
+      })
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't archive those — nothing was changed.")
+    }
+  }
 
   const copyMcp = () => {
     navigator.clipboard.writeText(mcpUrl)
@@ -736,6 +796,34 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           )}
         </div>
 
+        {/* Bulk selection bar */}
+        {selected.size > 0 && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2"
+          >
+            <span className="text-xs text-fg">
+              {selected.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={archiveSelected}
+                className={`text-xs px-4 min-h-11 ${BTN_GHOST}`}
+              >
+                Archive selected
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tabs + sort */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div role="tablist" aria-label="Spark status" className="flex gap-1">
@@ -806,6 +894,8 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
                 onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}
                 showStatus={searching}
+                selected={selected.has(spark.id)}
+                onToggleSelected={() => toggleSelected(spark.id)}
               />
             ))}
           </div>

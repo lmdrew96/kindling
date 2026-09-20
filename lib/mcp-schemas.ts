@@ -134,6 +134,23 @@ export const toolSchemas = {
       .describe('Limit the export to one status. Omit for everything.'),
   }),
 
+  kindling_batch_archive: z.object({
+    spark_ids: z
+      .array(sparkId)
+      .min(1, 'provide at least one spark_id')
+      .max(100, 'archive at most 100 sparks per call')
+      .describe('IDs of the sparks to archive, in one pass.'),
+  }),
+
+  kindling_delete: z.object({
+    spark_id: sparkId.describe('ID of the spark to permanently delete.'),
+    confirm: z
+      .literal(true)
+      .describe(
+        'Must be true, and must reflect something the user actually said. Deletion is permanent and has no undo — archive instead unless they explicitly asked to delete.'
+      ),
+  }),
+
   kindling_stats: z.object({}),
 
   kindling_tags: z.object({}),

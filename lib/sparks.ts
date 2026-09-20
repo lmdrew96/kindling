@@ -70,6 +70,37 @@ export const reviveSpark = async (token: string, id: string): Promise<Spark | nu
   return updateSpark(token, id, { status: 'active', cold_at: null })
 }
 
+/**
+ * Archive many sparks in one round trip. The per-spark path is a hgetall plus
+ * an hset each, so triaging thirty stale sparks used to be sixty calls.
+ * Returns the ids that actually moved — a caller can use them to undo.
+ */
+export const archiveSparks = async (token: string, ids: string[]): Promise<string[]> => {
+  const all = await redis.hgetall<Record<string, Spark>>(indexKey(token))
+  if (!all) return []
+
+  const updates: Record<string, Spark> = {}
+  for (const id of ids) {
+    const spark = all[id]
+    if (!spark || spark.status === 'archived') continue
+    updates[id] = { ...spark, status: 'archived' }
+  }
+
+  const changed = Object.keys(updates)
+  if (changed.length > 0) await redis.hset(indexKey(token), updates)
+  return changed
+}
+
+/**
+ * Permanently remove a spark. Everything else in Kindling is soft; this is the
+ * one operation with no way back, which is why nothing calls it without an
+ * explicit confirmation from the user.
+ */
+export const deleteSpark = async (token: string, id: string): Promise<boolean> => {
+  const removed = await redis.hdel(indexKey(token), id)
+  return removed > 0
+}
+
 // ─── Recall algorithm ────────────────────────────────────────────────────────
 
 export const recallSparks = async (
