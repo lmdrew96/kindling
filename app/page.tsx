@@ -19,6 +19,7 @@ import { BTN_GHOST, BTN_PRIMARY, INPUT, UUID_RE } from '@/components/ui'
 import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
+import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -53,6 +54,11 @@ async function batchArchiveApi(token: string, ids: string[]): Promise<string[]> 
   return (await res.json()).archived as string[]
 }
 
+async function deleteApi(token: string, id: string): Promise<void> {
+  const res = await fetch(`/api/sparks?token=${token}&id=${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete spark')
+}
+
 async function setStatusApi(token: string, id: string, status: SparkStatus): Promise<void> {
   const res = await fetch(`/api/sparks?token=${token}&id=${id}`, {
     method: 'PATCH',
@@ -73,6 +79,7 @@ function SparkCard({
   showStatus,
   selected,
   onToggleSelected,
+  onDelete,
 }: {
   spark: Spark
   onArchive?: () => void
@@ -82,6 +89,7 @@ function SparkCard({
   showStatus?: boolean
   selected?: boolean
   onToggleSelected?: () => void
+  onDelete?: () => void
 }) {
   const isCold = spark.status === 'cold'
   const promoted = isPromoted(spark)
@@ -224,6 +232,15 @@ function SparkCard({
               className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
             >
               Unarchive
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-xs px-3 min-h-11 rounded-lg border border-danger/40 text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+            >
+              Delete
             </button>
           )}
           {onArchive && (
@@ -407,6 +424,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [confirmForget, setConfirmForget] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmDelete, setConfirmDelete] = useState<Spark | null>(null)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -554,6 +572,20 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const handleUnarchive = (spark: Spark) =>
     changeStatus(spark, 'active', 'Unarchived — back in the fire.')
 
+  const handleDelete = async (spark: Spark) => {
+    setConfirmDelete(null)
+    const previous = sparks
+    setSparks((prev) => prev.filter((s) => s.id !== spark.id))
+    try {
+      await deleteApi(token, spark.id)
+      // Deliberately no Undo: the record is gone, so offering one would lie.
+      showToast('Deleted permanently.')
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't delete that — the spark is still here.")
+    }
+  }
+
   const toggleSelected = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -652,6 +684,14 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   return (
     <main className="min-h-screen bg-bg text-fg">
+      {confirmDelete && (
+        <ConfirmDeleteDialog
+          spark={confirmDelete}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => void handleDelete(confirmDelete)}
+        />
+      )}
+
       {confirmForget && (
         <ForgetTokenDialog
           token={token}
@@ -896,6 +936,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 showStatus={searching}
                 selected={selected.has(spark.id)}
                 onToggleSelected={() => toggleSelected(spark.id)}
+                onDelete={() => setConfirmDelete(spark)}
               />
             ))}
           </div>
