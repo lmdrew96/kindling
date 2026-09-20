@@ -65,7 +65,9 @@ export const toolSchemas = {
     context: z
       .string()
       .optional()
-      .describe('Optional context hint about the current session or focus area.'),
+      .describe(
+        'What the user is working on right now. Sparks whose title, content or tags overlap this hint are boosted in the ranking — enough to bias which of the neglected sparks surfaces first, not enough to override age and neglect entirely.'
+      ),
     tags: tagList('Filter recall to sparks matching ANY of these tags (e.g. ["substack", "writing"]).'),
   }),
 
@@ -134,7 +136,15 @@ export const toolSchemas = {
     spark_id: sparkId.describe('ID of the spark to update.'),
     title: titleField.describe('New short handle for the spark (≤80 chars).'),
     content: contentField.optional().describe('New content for the spark.'),
-    tags: tagList('New tags for the spark (replaces existing tags).'),
+    tags: tagList('Tags to apply, subject to tag_mode.'),
+    tag_mode: z
+      .enum(['merge', 'replace'])
+      .optional()
+      .default('merge')
+      .describe(
+        'merge (default) adds the given tags to the existing ones; replace overwrites them entirely. Merge is the default because replacing requires you to already know every tag the spark carries, and guessing wrong destroys the rest silently.'
+      ),
+    remove_tags: tagList('Tags to remove. Applied after tags/tag_mode.'),
   }),
 
   kindling_revive: z.object({

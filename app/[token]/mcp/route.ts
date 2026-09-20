@@ -143,7 +143,8 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
 
   kindling_update:
     'Edit a spark\'s title, content, or tags. At least one of them is required.\n\n' +
-    'Use it to sharpen a spark the user is actively thinking about — a better title, a detail they just added out loud, a tag that would make it findable later. Note that `tags` REPLACES the existing tags rather than adding to them, so read the spark first if you are not sure what it already carries.',
+    'Use it to sharpen a spark the user is actively thinking about — a better title, a detail they just added out loud, a tag that would make it findable later.\n\n' +
+    '`tags` MERGES into the existing tags by default, so you can add one without knowing the rest. Pass tag_mode "replace" only when you mean to overwrite them all, and remove_tags to drop specific ones.',
 
   kindling_revive:
     'Move a cold spark back to active, resetting its decay clock so it can surface in recall again.\n\n' +
@@ -234,8 +235,8 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
     }
 
     case 'kindling_recall': {
-      const { limit, tags } = parsed.data as Args<'kindling_recall'>
-      const sparks = await recallSparks(token, limit, tags)
+      const { limit, tags, context } = parsed.data as Args<'kindling_recall'>
+      const sparks = await recallSparks(token, limit, tags, context)
       if (sparks.length === 0) {
         return text(
           tags?.length
@@ -329,13 +330,28 @@ async function handleToolCall(token: string, name: string, rawArgs: ToolArgs): P
     }
 
     case 'kindling_update': {
-      const { spark_id, title, content, tags } = parsed.data as Args<'kindling_update'>
-      if (!content && !tags && !title)
-        return errText('Provide at least one of: title, content, tags.')
+      const { spark_id, title, content, tags, tag_mode, remove_tags } =
+        parsed.data as Args<'kindling_update'>
+      if (!content && !tags && !title && !remove_tags)
+        return errText('Provide at least one of: title, content, tags, remove_tags.')
+
+      const existing = await getSpark(token, spark_id)
+      if (!existing) return errText(`Spark ${spark_id} not found.`)
+
+      // Merge by default: replacing requires the caller to already know every
+      // tag the spark carries, and a wrong guess used to drop the rest silently.
+      let nextTags: string[] | undefined
+      if (tags || remove_tags) {
+        const base =
+          tag_mode === 'replace' ? (tags ?? []) : [...(existing.tags ?? []), ...(tags ?? [])]
+        const removed = new Set(remove_tags ?? [])
+        nextTags = Array.from(new Set(base)).filter((t) => !removed.has(t))
+      }
+
       const updated = await updateSpark(token, spark_id, {
         ...(title ? { title } : {}),
         ...(content ? { content } : {}),
-        ...(tags ? { tags } : {}),
+        ...(nextTags ? { tags: nextTags } : {}),
       })
       if (!updated) return errText(`Spark ${spark_id} not found.`)
       const updatedTags = updated.tags ?? []
@@ -410,7 +426,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.8.0' },
+          serverInfo: { name: 'kindling', version: '0.9.0' },
         })
       }
 

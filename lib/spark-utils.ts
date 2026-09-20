@@ -104,3 +104,36 @@ export const absoluteDate = (ms: number): string =>
 
 /** A spark that was promoted carries provenance; a discarded one doesn't. */
 export const isPromoted = (spark: Spark): boolean => Boolean(spark.promoted_to)
+
+// ─── Context biasing ─────────────────────────────────────────────────────────
+
+const STOP_WORDS = new Set([
+  'the','a','an','and','or','but','of','to','in','on','for','with','at','by',
+  'from','up','about','into','over','after','is','are','was','were','be','been',
+  'it','this','that','these','those','i','im','my','we','you','your','some',
+])
+
+/** Distinctive lowercase words from a free-text hint. */
+export const contextWords = (context: string): string[] =>
+  Array.from(
+    new Set(
+      context
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+    )
+  )
+
+const CONTEXT_MAX_BONUS = 25
+
+/**
+ * Nudges recall toward what the user is working on right now. Deliberately
+ * capped below the weight of age and neglect — it should bias the ranking,
+ * not replace it, or `context` would just become a second search.
+ */
+export const contextBonus = (spark: Spark, words: string[]): number => {
+  if (words.length === 0) return 0
+  const haystack = `${spark.title ?? ''} ${spark.content} ${(spark.tags ?? []).join(' ')}`.toLowerCase()
+  const hits = words.filter((w) => haystack.includes(w)).length
+  return (hits / words.length) * CONTEXT_MAX_BONUS
+}

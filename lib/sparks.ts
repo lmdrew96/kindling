@@ -1,7 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
 import { redis, indexKey } from './redis'
 import type { Spark, SparkStatus } from './types'
-import { DAY_MS, DECAY_THRESHOLD_DAYS, scoreSpark } from './spark-utils'
+import {
+  DAY_MS,
+  DECAY_THRESHOLD_DAYS,
+  contextBonus,
+  contextWords,
+  scoreSpark,
+} from './spark-utils'
 
 export { scoreSpark }
 
@@ -67,7 +73,8 @@ export const reviveSpark = async (token: string, id: string): Promise<Spark | nu
 export const recallSparks = async (
   token: string,
   limit: number = 5,
-  tags?: string[]
+  tags?: string[],
+  context?: string
 ): Promise<Spark[]> => {
   await runDecay(token)
 
@@ -77,8 +84,11 @@ export const recallSparks = async (
   }
   if (active.length === 0) return []
 
+  // A context hint biases the ranking toward what the user is working on now,
+  // without overriding age and neglect.
+  const words = context ? contextWords(context) : []
   const scored = active
-    .map((spark) => ({ spark, score: scoreSpark(spark) }))
+    .map((spark) => ({ spark, score: scoreSpark(spark) + contextBonus(spark, words) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
 

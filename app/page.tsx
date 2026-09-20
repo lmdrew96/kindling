@@ -56,11 +56,14 @@ function SparkCard({
   onArchive,
   onRevive,
   onUnarchive,
+  showStatus,
 }: {
   spark: Spark
   onArchive?: () => void
   onRevive?: () => void
   onUnarchive?: () => void
+  /** Search spans every status, so a hit has to say where it lives. */
+  showStatus?: boolean
 }) {
   const isCold = spark.status === 'cold'
   const promoted = isPromoted(spark)
@@ -165,6 +168,11 @@ function SparkCard({
           {isCold && (
             <span className="flex items-center gap-1 text-cold-text">
               <span aria-hidden="true">❄</span> Gone cold
+            </span>
+          )}
+          {showStatus && !isCold && (
+            <span className="rounded-full border border-border px-2 py-0.5 text-fg-muted">
+              {promoted ? 'Promoted' : spark.status === 'archived' ? 'Archived' : 'Active'}
             </span>
           )}
         </div>
@@ -368,6 +376,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [mcpCopied, setMcpCopied] = useState(false)
   const [confirmForget, setConfirmForget] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const mcpUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/${token}/mcp`
@@ -403,6 +412,44 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }, [token])
 
   useEffect(() => { load() }, [load])
+
+  /**
+   * "Capture it before it fades" was the product promise and it cost a mouse
+   * trip. Kept to three keys — a full palette is its own thing.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement
+      const typing =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement
+
+      if (e.key === 'Escape' && typing) {
+        ;(el as HTMLElement).blur()
+        return
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return
+
+      if (e.key === 'c') {
+        e.preventDefault()
+        kindleRef.current?.focus()
+      } else if (e.key === '/') {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Grow the capture box with its content rather than scrolling inside 3 rows.
+  useEffect(() => {
+    const el = kindleRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`
+  }, [kindleText])
 
   const handleKindle = async () => {
     if (!kindleText.trim()) return
@@ -481,15 +528,22 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     setTimeout(() => setMcpCopied(false), 2000)
   }
 
+  const query = search.trim().toLowerCase()
+  const matchesQuery = (s: Spark) =>
+    !query ||
+    s.content.toLowerCase().includes(query) ||
+    (s.title ?? '').toLowerCase().includes(query) ||
+    (s.tags ?? []).some((t) => t.toLowerCase().includes(query))
+
+  // Searching looks everywhere. Scoping search to the open tab meant "I know I
+  // wrote this down" -> nothing -> conclude it's lost, when it was one tab over.
   const filtered = sparks
-    .filter((s) => inTab(s, tab))
-    .filter((s) =>
-      !search || s.content.toLowerCase().includes(search.toLowerCase()) ||
-      (s.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
-    )
+    .filter((s) => (query ? matchesQuery(s) : inTab(s, tab)))
     // Redis hash order means nothing to a reader. Ranking by recall score is
     // the whole premise of the product, so it is also the default here.
     .sort(COMPARATORS[sort])
+
+  const searching = query.length > 0
 
   const counts = Object.fromEntries(
     TABS.map((t) => [t, sparks.filter((s) => inTab(s, t)).length])
@@ -601,7 +655,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             placeholder="What's on your mind? Capture it before it fades…"
             aria-label="Capture a spark"
             rows={3}
-            className="w-full text-sm outline-none resize-none leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
+            className="w-full text-sm outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
           />
           <div className="flex gap-2 items-center">
             <input
@@ -620,17 +674,28 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
               {kindling ? 'Kindling…' : 'Kindle'}
             </button>
           </div>
-          <p className="text-xs text-fg-subtle">⌘↵ to submit</p>
+          <p className="text-xs text-fg-subtle">
+            ⌘↵ to submit · <kbd>c</kbd> to capture · <kbd>/</kbd> to search · <kbd>Esc</kbd> to
+            leave a field
+          </p>
         </div>
 
         {/* Search */}
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search sparks…"
-          aria-label="Search sparks"
-          className={`w-full text-sm px-4 py-2.5 rounded-xl ${INPUT}`}
-        />
+        <div className="space-y-1.5">
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search sparks…"
+            aria-label="Search sparks (searches every status)"
+            className={`w-full text-sm px-4 py-2.5 rounded-xl ${INPUT}`}
+          />
+          {searching && (
+            <p className="text-xs text-fg-subtle" role="status">
+              {filtered.length} result{filtered.length === 1 ? '' : 's'} across all statuses
+            </p>
+          )}
+        </div>
 
         {/* Tabs + sort */}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -691,7 +756,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState tab={tab} hasSearch={!!search} />
+          <EmptyState tab={tab} hasSearch={searching} />
         ) : (
           <div className="space-y-3">
             {filtered.map((spark) => (
@@ -701,6 +766,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 onArchive={spark.status !== 'archived' ? () => handleArchive(spark) : undefined}
                 onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
                 onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}
+                showStatus={searching}
               />
             ))}
           </div>
