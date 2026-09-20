@@ -147,7 +147,7 @@ function SparkCard({
             <button
               type="button"
               onClick={onRevive}
-              className="text-xs px-2.5 py-1 rounded-lg bg-cold/15 text-cold-text border border-cold/40 hover:bg-cold/25 transition-colors cursor-pointer"
+              className="text-xs px-3 min-h-11 rounded-lg bg-cold/15 text-cold-text border border-cold/40 hover:bg-cold/25 transition-colors cursor-pointer"
             >
               Revive
             </button>
@@ -156,7 +156,7 @@ function SparkCard({
             <button
               type="button"
               onClick={onUnarchive}
-              className={`text-xs px-2.5 py-1 ${BTN_GHOST}`}
+              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
             >
               Unarchive
             </button>
@@ -165,7 +165,7 @@ function SparkCard({
             <button
               type="button"
               onClick={onArchive}
-              className={`text-xs px-2.5 py-1 ${BTN_GHOST}`}
+              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
             >
               Archive
             </button>
@@ -232,7 +232,7 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
             <button
               type="button"
               onClick={load}
-              className={`px-4 text-sm ${BTN_GHOST}`}
+              className={`px-4 min-h-11 text-sm ${BTN_GHOST}`}
             >
               Load →
             </button>
@@ -244,6 +244,8 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
     </main>
   )
 }
+
+const TABS = ['active', 'cold', 'archived'] as const
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -279,6 +281,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('recall')
+  const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const [search, setSearch] = useState('')
   const [kindleText, setKindleText] = useState('')
   const [tagInput, setTagInput] = useState('')
@@ -417,6 +420,22 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     archived: sparks.filter((s) => s.status === 'archived').length,
   }
 
+  /** Arrow/Home/End move between tabs, per the WAI-ARIA tabs pattern. */
+  const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
+    const moves: Record<string, number> = {
+      ArrowRight: (index + 1) % TABS.length,
+      ArrowLeft: (index - 1 + TABS.length) % TABS.length,
+      Home: 0,
+      End: TABS.length - 1,
+    }
+    const next = moves[e.key]
+    if (next === undefined) return
+    e.preventDefault()
+    const target = TABS[next]
+    setTab(target)
+    tabRefs.current[target]?.focus()
+  }
+
   const tabLabel = (t: Tab): string => {
     const labels: Record<Tab, string> = { active: 'Active', cold: 'Cold', archived: 'Archived' }
     return `${labels[t]} ${counts[t] > 0 ? `(${counts[t]})` : ''}`
@@ -460,14 +479,14 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             <button
               type="button"
               onClick={copyMcp}
-              className="text-xs px-3 py-1.5 rounded-lg bg-cold/15 border border-cold/40 text-cold-text hover:bg-cold/25 transition-colors cursor-pointer"
+              className="text-xs px-3 min-h-11 rounded-lg bg-cold/15 border border-cold/40 text-cold-text hover:bg-cold/25 transition-colors cursor-pointer"
             >
               {mcpCopied ? 'Copied ✓' : 'Copy MCP URL'}
             </button>
             <button
               type="button"
               onClick={onSignOut}
-              className="text-xs px-3 py-1.5 rounded-lg text-fg-subtle hover:text-fg transition-colors cursor-pointer"
+              className="text-xs px-3 min-h-11 rounded-lg text-fg-subtle hover:text-fg transition-colors cursor-pointer"
             >
               Switch token
             </button>
@@ -500,7 +519,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
               type="button"
               onClick={handleKindle}
               disabled={kindling || !kindleText.trim()}
-              className="text-sm font-semibold px-4 py-2 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
+              className="text-sm font-semibold px-4 min-h-11 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
             >
               {kindling ? 'Kindling…' : 'Kindle'}
             </button>
@@ -519,15 +538,23 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
         {/* Tabs + sort */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex gap-1">
-            {(['active', 'cold', 'archived'] as Tab[]).map((t) => (
+          <div role="tablist" aria-label="Spark status" className="flex gap-1">
+            {TABS.map((t, i) => (
               <button
                 key={t}
                 type="button"
+                role="tab"
+                id={`tab-${t}`}
+                aria-selected={tab === t}
+                aria-controls="spark-panel"
+                // Roving tabindex: one stop for the whole group, arrows move within.
+                tabIndex={tab === t ? 0 : -1}
+                ref={(el) => { tabRefs.current[t] = el }}
                 onClick={() => setTab(t)}
-                className={`text-xs px-3 py-1.5 rounded-lg cursor-pointer border transition-colors ${
+                onKeyDown={(e) => onTabKeyDown(e, i)}
+                className={`text-xs px-3 min-h-11 rounded-lg cursor-pointer border transition-colors ${
                   tab === t
-                    ? 'bg-primary/15 text-primary border-primary/40 font-semibold'
+                    ? 'bg-primary/15 text-primary border-primary/40 font-semibold underline underline-offset-4'
                     : 'bg-transparent text-fg-subtle border-transparent hover:text-fg-muted'
                 }`}
               >
@@ -541,7 +568,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className={`text-xs px-2 py-1.5 cursor-pointer ${INPUT}`}
+              className={`text-xs px-2 min-h-11 cursor-pointer ${INPUT}`}
             >
               {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
                 <option key={k} value={k}>
@@ -553,6 +580,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         </div>
 
         {/* Sparks list */}
+        <div id="spark-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {loading ? (
           <p className="text-sm py-8 text-center text-fg-subtle">Loading your sparks…</p>
         ) : loadError ? (
@@ -581,6 +609,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             ))}
           </div>
         )}
+        </div>
       </div>
     </main>
   )
