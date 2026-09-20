@@ -426,8 +426,8 @@ Body is a partial `Spark` — the fields in it are merged over the existing reco
 The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 implementation — no MCP SDK dependency.
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
-- **Protocol version:** `2024-11-05`
-- **Server info:** `{ name: "kindling", version: "0.3.0" }`
+- **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
+- **Server info:** `{ name: "kindling", version: "0.3.1" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods

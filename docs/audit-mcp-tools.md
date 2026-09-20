@@ -47,13 +47,15 @@ const spark_id = args.spark_id as string     // promote/archive/update/revive
 
 | Issue | Current | Spec |
 |---|---|---|
-| **Version negotiation** | `initialize` ignores `params.protocolVersion` and always returns `2024-11-05` | A server that doesn't support the requested version must return `-32022 UnsupportedProtocolVersionError` with a `supported` array. Kindling silently downgrades instead. |
+| **Version negotiation** | `initialize` ignores `params.protocolVersion` and always returns `2024-11-05` | A server MUST echo the requested version when it supports it, and otherwise MUST respond with another version it supports (SHOULD be its latest). Kindling ignores the request entirely. |
 | **Tool errors** | Every failure returns plain `text()` — "Spark abc not found." is structurally identical to success | Tool execution errors must set `isError: true` in the result, which is what lets the model recognize and self-correct. Protocol errors (unknown tool, malformed request) stay as JSON-RPC errors. |
 | **Notifications** | `notifications/initialized` returns `ok(id, {})` | "The receiver **must not** send a response to a notification, and notifications must not include an ID field." Should return `202`/empty body. |
 
 **Why it matters:** The version pin is the practical one — `2024-11-05` is two years and several revisions old, and a client negotiating a newer version gets silently handed an old one with no signal. The `isError` gap is the one that affects answer quality: right now a model that calls `kindling_promote` with a bad ID is told "Spark abc not found." in the same channel as a success, and has no structural cue that it failed. Newer spec revisions also add fields to the tool result shape (e.g. `resultType`) worth reviewing while in there.
 
 **Suggested action:** Negotiate the version against a supported list; add `isError: true` to all failure paths while keeping the human-readable text (the readable text is a genuine strength — don't replace it, just flag it); return an empty 202 for notifications.
+
+**Correction (2026-09-20, applied in v0.3.1):** an earlier draft of this finding cited `-32022 UnsupportedProtocolVersionError` as the required response to an unsupported version. That is wrong. The lifecycle spec defines the error case as `-32602` with `data.supported` / `data.requested`, and — more importantly — reserves it for versions the server cannot work with at all. The normal rule is to respond with a version the server *does* support rather than to error, which is what Kindling now does. The spec revision was also checked: the newest published at the time of implementation is `2025-11-25`, not the `2026-07-28` this document's header claims.
 
 **Effort:** Half-day
 

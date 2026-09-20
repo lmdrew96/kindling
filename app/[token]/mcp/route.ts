@@ -15,15 +15,55 @@ export const runtime = 'nodejs'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// ─── Protocol versions ───────────────────────────────────────────────────────
+
+/**
+ * Newest last. Per the lifecycle spec a server MUST echo the client's requested
+ * version when it supports it, and otherwise MUST respond with another version
+ * it supports (SHOULD be its latest) — it does not error. Extend this list as
+ * revisions land; nothing else needs to change.
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = [
+  '2024-11-05',
+  '2025-03-26',
+  '2025-06-18',
+  '2025-11-25',
+] as const
+
+const LATEST_PROTOCOL_VERSION =
+  SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1]
+
+const negotiateVersion = (requested: unknown): string =>
+  typeof requested === 'string' &&
+  (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requested)
+    ? requested
+    : LATEST_PROTOCOL_VERSION
+
 // ─── JSON-RPC helpers ────────────────────────────────────────────────────────
 
 const ok = (id: unknown, result: unknown) =>
   NextResponse.json({ jsonrpc: '2.0', id, result })
 
-const rpcError = (id: unknown, code: number, message: string) =>
-  NextResponse.json({ jsonrpc: '2.0', id, error: { code, message } })
+const rpcError = (id: unknown, code: number, message: string, data?: unknown) =>
+  NextResponse.json({
+    jsonrpc: '2.0',
+    id,
+    error: { code, message, ...(data !== undefined ? { data } : {}) },
+  })
 
+/** A successful tool result. */
 const text = (content: string) => ({ content: [{ type: 'text', text: content }] })
+
+/**
+ * A failed tool result. Tool *execution* failures belong in the result with
+ * isError set — not as JSON-RPC errors, which are reserved for protocol-level
+ * problems. The flag is what lets the model notice it failed and self-correct;
+ * the human-readable text stays exactly as it was.
+ */
+const errText = (content: string) => ({
+  content: [{ type: 'text', text: content }],
+  isError: true,
+})
 
 // ─── Tool schemas ────────────────────────────────────────────────────────────
 
@@ -213,7 +253,7 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
         promoted_notes: notes ?? null,
         status: 'archived',
       })
-      if (!updated) return text(`Spark ${spark_id} not found.`)
+      if (!updated) return errText(`Spark ${spark_id} not found.`)
       return text(`Promoted [${spark_id}] → ${target}${notes ? `\nNotes: ${notes}` : ''}`)
     }
 
@@ -231,7 +271,8 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     case 'kindling_search': {
       const query = (args.query as string | undefined)?.toLowerCase()
       const tags = args.tags as string[] | undefined
-      if (!query && (!tags || tags.length === 0)) return text('Provide at least one of: query, tags.')
+      if (!query && (!tags || tags.length === 0))
+        return errText('Provide at least one of: query, tags.')
       const all = await listSparks(token)
       const matches = all.filter((s) => {
         const contentOk = query ? s.content.toLowerCase().includes(query) : true
@@ -246,7 +287,7 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     case 'kindling_archive': {
       const spark_id = args.spark_id as string
       const spark = await getSpark(token, spark_id)
-      if (!spark) return text(`Spark ${spark_id} not found.`)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
       await archiveSpark(token, spark_id)
       return text(`Archived [${spark_id}]`)
     }
@@ -264,13 +305,14 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       const title = args.title as string | undefined
       const content = args.content as string | undefined
       const tags = args.tags as string[] | undefined
-      if (!content && !tags && !title) return text('Provide at least one of: title, content, tags.')
+      if (!content && !tags && !title)
+        return errText('Provide at least one of: title, content, tags.')
       const updated = await updateSpark(token, spark_id, {
         ...(title ? { title } : {}),
         ...(content ? { content } : {}),
         ...(tags ? { tags } : {}),
       })
-      if (!updated) return text(`Spark ${spark_id} not found.`)
+      if (!updated) return errText(`Spark ${spark_id} not found.`)
       const updatedTags = updated.tags ?? []
       return text(`Updated [${spark_id}]: ${updated.content}${updatedTags.length ? ` [${updatedTags.join(', ')}]` : ''}`)
     }
@@ -278,8 +320,9 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
     case 'kindling_revive': {
       const spark_id = args.spark_id as string
       const spark = await getSpark(token, spark_id)
-      if (!spark) return text(`Spark ${spark_id} not found.`)
-      if (spark.status !== 'cold') return text(`Spark ${spark_id} is ${spark.status}, not cold.`)
+      if (!spark) return errText(`Spark ${spark_id} not found.`)
+      if (spark.status !== 'cold')
+        return errText(`Spark ${spark_id} is ${spark.status}, not cold.`)
       await reviveSpark(token, spark_id)
       return text(`Revived [${spark_id}] — back in the fire.`)
     }
@@ -301,6 +344,23 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid token format' }, { status: 404 })
   }
 
+  // Clients negotiating over HTTP echo the agreed version back on every
+  // request. An unsupported one is a 400, per the transport spec.
+  const headerVersion = req.headers.get('mcp-protocol-version')
+  if (
+    headerVersion &&
+    !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(headerVersion)
+  ) {
+    return NextResponse.json(
+      {
+        error: 'Unsupported MCP-Protocol-Version',
+        supported: SUPPORTED_PROTOCOL_VERSIONS,
+        requested: headerVersion,
+      },
+      { status: 400 }
+    )
+  }
+
   let body: { jsonrpc?: string; id?: unknown; method?: string; params?: unknown }
   try {
     body = await req.json()
@@ -308,19 +368,25 @@ export async function POST(
     return rpcError(null, -32700, 'Parse error')
   }
 
-  const { id = null, method, params: rpcParams } = body
+  const { method, params: rpcParams } = body
+  const id = body.id ?? null
+
+  // A notification carries no id and MUST NOT be answered with a response
+  // body. That covers notifications/initialized and any future one.
+  const isNotification = body.id === undefined || method?.startsWith('notifications/')
+  if (isNotification) return new NextResponse(null, { status: 202 })
 
   try {
     switch (method) {
-      case 'initialize':
+      case 'initialize': {
+        const requested = (rpcParams as { protocolVersion?: unknown } | undefined)
+          ?.protocolVersion
         return ok(id, {
-          protocolVersion: '2024-11-05',
+          protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.3.0' },
+          serverInfo: { name: 'kindling', version: '0.3.1' },
         })
-
-      case 'notifications/initialized':
-        return ok(id, {})
+      }
 
       case 'tools/list':
         return ok(id, { tools: TOOLS })
@@ -341,4 +407,21 @@ export async function POST(
     const message = err instanceof Error ? err.message : 'Internal error'
     return rpcError(id, -32000, message)
   }
+}
+
+/**
+ * Kindling is stateless POST-only — there is no SSE stream to open. Clients
+ * that probe for one get an explicit explanation rather than the framework's
+ * bare 405.
+ */
+export async function GET() {
+  return NextResponse.json(
+    {
+      error: 'Method not allowed',
+      message:
+        'The Kindling MCP endpoint is stateless and accepts JSON-RPC over POST only. There is no SSE stream to subscribe to.',
+      supported: SUPPORTED_PROTOCOL_VERSIONS,
+    },
+    { status: 405, headers: { Allow: 'POST' } }
+  )
 }
