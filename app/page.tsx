@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
 import { contentExtent, displayTitle, isLongContent, scoreSpark } from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
+import { BTN_GHOST, BTN_PRIMARY, INPUT, UUID_RE } from '@/components/ui'
+import { TokenDisplay } from '@/components/token-display'
+import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -37,14 +40,6 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
   })
   if (!res.ok) throw new Error(`Failed to set status to ${status}`)
 }
-
-// ─── Shared class strings ────────────────────────────────────────────────────
-
-const INPUT =
-  'rounded-lg bg-surface border border-border text-fg placeholder:text-fg-subtle outline-none focus:border-border-strong transition-colors'
-
-const BTN_GHOST =
-  'rounded-lg bg-surface border border-border text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors cursor-pointer'
 
 // ─── Spark card ───────────────────────────────────────────────────────────────
 
@@ -181,12 +176,17 @@ function SparkCard({
 function TokenGate({ onToken }: { onToken: (t: string) => void }) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  // A freshly minted token is held here until the user confirms they've saved
+  // it. Generating used to drop them straight into the dashboard having never
+  // shown them the one string they cannot afford to lose.
+  const [fresh, setFresh] = useState<string | null>(null)
 
-  const generate = () => {
-    const t = crypto.randomUUID()
-    localStorage.setItem('kindling:token', t)
-    onToken(t)
+  const generate = () => setFresh(crypto.randomUUID())
+
+  const keepFresh = () => {
+    if (!fresh) return
+    localStorage.setItem('kindling:token', fresh)
+    onToken(fresh)
   }
 
   const load = () => {
@@ -197,6 +197,39 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
     }
     localStorage.setItem('kindling:token', t)
     onToken(t)
+  }
+
+  if (fresh) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6 bg-bg">
+        <div className="w-full max-w-md space-y-5">
+          <div className="text-center">
+            <h1 className="font-display text-2xl font-bold mb-2 text-primary">
+              Save this token
+            </h1>
+            <p className="text-sm leading-relaxed text-fg-muted">
+              It <strong className="text-fg">is</strong> your account — no email, no password,
+              no recovery. Anyone with it can read your sparks; without it, nobody can,
+              including you.
+            </p>
+          </div>
+
+          <TokenDisplay token={fresh} />
+
+          <p className="text-xs text-fg-subtle text-center">
+            Put it in a password manager or a note you&rsquo;ll still have in six months.
+          </p>
+
+          <button
+            type="button"
+            onClick={keepFresh}
+            className={`w-full py-3 px-5 min-h-11 text-sm ${BTN_PRIMARY}`}
+          >
+            I&rsquo;ve saved it — open Kindling →
+          </button>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -290,6 +323,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [kindling, setKindling] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [mcpCopied, setMcpCopied] = useState(false)
+  const [confirmForget, setConfirmForget] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
 
   const mcpUrl = typeof window !== 'undefined'
@@ -443,6 +477,14 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   return (
     <main className="min-h-screen bg-bg text-fg">
+      {confirmForget && (
+        <ForgetTokenDialog
+          token={token}
+          onCancel={() => setConfirmForget(false)}
+          onConfirm={() => { setConfirmForget(false); onSignOut() }}
+        />
+      )}
+
       {/* Toast. role=status so changes are announced; only pointer-events-none
           when there is nothing to click, or the Undo button would be dead. */}
       <div
@@ -485,10 +527,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
             <button
               type="button"
-              onClick={onSignOut}
-              className="text-xs px-3 min-h-11 rounded-lg text-fg-subtle hover:text-fg transition-colors cursor-pointer"
+              onClick={() => setConfirmForget(true)}
+              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
             >
-              Switch token
+              Clear token
             </button>
           </div>
         </div>
