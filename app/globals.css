@@ -101,3 +101,25 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* The heat rail is decorative reinforcement — a spark's age text and its
+   status tab already carry the same fact. At raised contrast the interpolated
+   middle of the ramp is the first thing to become ambiguous, so collapse it to
+   the two audited endpoints and drop the bloom entirely. */
+@media (prefers-contrast: more) {
+  [data-heat] {
+    box-shadow: none !important;
+  }
+
+  [data-heat='warm'] {
+    border-left-color: var(--color-primary) !important;
+  }
+
+  [data-heat='cooling'] {
+    border-left-color: var(--color-border-strong) !important;
+  }
+
+  [data-heat='cold'] {
+    border-left-color: var(--color-cold) !important;
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import type { CSSProperties } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
 import {
   DECAY_THRESHOLD_DAYS,
@@ -15,6 +16,7 @@ import {
   normalizeTags,
   relativeAge,
   scoreSpark,
+  sparkHeat,
   tagCounts,
 } from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
@@ -190,6 +192,7 @@ function SparkCard({
   selected,
   onToggleSelected,
   onDelete,
+  decayDays,
 }: {
   spark: Spark
   onEdit?: () => void
@@ -205,6 +208,8 @@ function SparkCard({
   selected?: boolean
   onToggleSelected?: () => void
   onDelete?: () => void
+  /** The user's cold threshold, so heat reaches zero where decay actually bites. */
+  decayDays?: number
 }) {
   const isCold = spark.status === 'cold'
   const promoted = isPromoted(spark)
@@ -216,14 +221,52 @@ function SparkCard({
   const [expanded, setExpanded] = useState(false)
   const bodyId = `spark-body-${spark.id}`
 
+  // A spark's temperature, rendered as a left rail that runs marigold when it
+  // was touched recently and aqua as it drifts toward cold. Null means the
+  // spark is off the decay clock entirely, and the old status styling stands.
+  // `now` is left to default inside the helper rather than read here, the same
+  // way isSnoozed and relativeAge already do it on this card — sparks only ever
+  // render after a client fetch, so there is no server render to disagree with.
+  const heat = sparkHeat(spark, undefined, decayDays)
+  const heatColor =
+    heat === null
+      ? null
+      : `color-mix(in oklch, var(--color-primary) ${Math.round(heat * 100)}%, var(--color-cold))`
+
+  const heatStyle: CSSProperties | undefined = heatColor
+    ? {
+        // The other three sides only lean toward the rail, so the card still
+        // reads as one object rather than a stripe glued to a box.
+        borderColor: `color-mix(in oklch, ${heatColor} 20%, var(--color-border))`,
+        borderLeftColor: heatColor,
+        borderLeftWidth: '3px',
+        // Reserved for the genuinely fresh. If every card blooms, none do.
+        ...(heat !== null && heat >= 0.85
+          ? {
+              boxShadow:
+                '-8px 0 20px -10px color-mix(in srgb, var(--color-primary) 18%, transparent)',
+            }
+          : {}),
+      }
+    : undefined
+
+  const heatBucket = heat === null ? undefined : heat >= 0.85 ? 'warm' : heat < 0.15 ? 'cold' : 'cooling'
+
   return (
     <div
-      className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors ${
-        isCold
-          ? 'bg-surface border-cold/40'
-          : promoted
-            ? 'bg-surface border-primary/40'
-            : 'bg-surface border-border'
+      data-heat={heatBucket}
+      style={heatStyle}
+      className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors duration-[400ms] motion-reduce:transition-none ${
+        heat !== null
+          ? // Cold cards drop to the page color so they sit further back.
+            heat < 0.15
+            ? 'bg-bg'
+            : 'bg-surface'
+          : isCold
+            ? 'bg-surface border-cold/40'
+            : promoted
+              ? 'bg-surface border-primary/40'
+              : 'bg-surface border-border'
       }`}
     >
       {onToggleSelected && (
@@ -1350,6 +1393,7 @@ function Dashboard({
                 <SparkCard
                   key={`recalled-${spark.id}`}
                   spark={spark}
+                  decayDays={decayDays}
                   onEdit={() => setEditing(spark)}
                   onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
                   onArchive={() => handleArchive(spark)}
@@ -1531,6 +1575,7 @@ function Dashboard({
               <SparkCard
                 key={spark.id}
                 spark={spark}
+                decayDays={decayDays}
                 onArchive={spark.status !== 'archived' ? () => handleArchive(spark) : undefined}
                 onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
                 onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}

@@ -375,3 +375,34 @@ export const isStanding = (spark: Spark): boolean => spark.standing === true
 /** Whether decay should be allowed to touch this spark at all. */
 export const canGoCold = (spark: Spark, now: number = Date.now()): boolean =>
   spark.status === 'active' && !isStanding(spark) && !isSnoozed(spark, now)
+
+/**
+ * How alive a spark currently is, on [0,1]. 1 is touched today; 0 is exactly at
+ * the cold threshold.
+ *
+ * Deliberately NOT scoreSpark. That is recall *priority*, and it runs HIGH for
+ * old, neglected, never-surfaced sparks — driving a warm/cold visual from it
+ * would set the stalest cards glowing. This is scoreSpark's neglect term alone,
+ * inverted, which is also the quantity canGoCold uses: a spark therefore looks
+ * cold at exactly the moment it becomes cold, rather than on some second clock
+ * that drifts away from the first.
+ *
+ * Returns null for sparks that are not on the decay clock at all. Standing
+ * sparks are intentions rather than perishable ideas, snoozed ones have been
+ * deliberately set down, and archived or promoted ones are concluded — a
+ * temperature for any of them would be a lie.
+ */
+export const sparkHeat = (
+  spark: Spark,
+  now: number = Date.now(),
+  decayThresholdDays: number = DECAY_THRESHOLD_DAYS
+): number | null => {
+  if (isStanding(spark) || isSnoozed(spark, now)) return null
+  if (spark.status === 'archived' || isPromoted(spark)) return null
+  if (spark.status === 'cold') return 0
+
+  const lastInteraction = spark.last_surfaced_at ?? spark.created_at
+  const daysSinceInteraction = (now - lastInteraction) / DAY_MS
+  const neglect = Math.min(Math.max(daysSinceInteraction / decayThresholdDays, 0), 1)
+  return 1 - neglect
+}
