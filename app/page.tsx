@@ -650,6 +650,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }, [token])
 
+  // load() clears the error state synchronously before fetching, and a
+  // client-side store read on mount has nowhere else to live.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [load])
 
   // Opens itself once, for someone who has just been handed an MCP URL and no
@@ -657,6 +660,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   useEffect(() => {
     try {
       if (!localStorage.getItem('kindling:seen-help')) {
+        // localStorage is unreadable during SSR, so this cannot move into a
+        // state initializer.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setShowHelp(true)
         localStorage.setItem('kindling:seen-help', '1')
       }
@@ -734,7 +740,6 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
    */
   const changeStatus = useCallback(
     async (spark: Spark, next: SparkStatus, message: string, undoable = true) => {
-      const previous = spark.status
       const apply = (status: SparkStatus) =>
         setSparks((prev) =>
           prev.map((s) =>
@@ -744,30 +749,40 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           )
         )
 
-      apply(next)
-      try {
-        await setStatusApi(token, spark.id, next)
-        showToast(
-          message,
-          undoable
-            ? {
-                label: 'Undo',
-                run: () => {
-                  dismissToast()
-                  void changeStatus(
-                    { ...spark, status: next },
-                    previous,
-                    'Undone.',
-                    false
-                  )
-                },
-              }
-            : undefined
-        )
-      } catch {
-        apply(previous)
-        showToast(`Couldn't save that change — the spark is still ${previous}.`)
+      /**
+       * One optimistic hop with rollback. Undo is the same hop in reverse, so
+       * it goes through here too rather than recursing back into changeStatus
+       * — which referenced itself before its own declaration.
+       */
+      const transition = async (to: SparkStatus, from: SparkStatus): Promise<boolean> => {
+        apply(to)
+        try {
+          await setStatusApi(token, spark.id, to)
+          return true
+        } catch {
+          apply(from)
+          showToast(`Couldn't save that change — the spark is still ${from}.`)
+          return false
+        }
       }
+
+      const previous = spark.status
+      if (!(await transition(next, previous))) return
+
+      showToast(
+        message,
+        undoable
+          ? {
+              label: 'Undo',
+              run: () => {
+                dismissToast()
+                void transition(previous, next).then((done) => {
+                  if (done) showToast('Undone.')
+                })
+              },
+            }
+          : undefined
+      )
     },
     [token, showToast, dismissToast]
   )
@@ -795,6 +810,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }
 
   const handleSnooze = async (spark: Spark, days: number) => {
+    // Only ever called from a click handler; the rule cannot tell that apart
+    // from the component body.
+    // eslint-disable-next-line react-hooks/purity
     const until = Date.now() + days * 86_400_000
     const previous = sparks
     setSparks((prev) =>
@@ -1410,6 +1428,9 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem('kindling:token')
+    // localStorage is unreadable during SSR, so the token cannot be a state
+    // initializer.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setToken(saved)
     setReady(true)
   }, [])
