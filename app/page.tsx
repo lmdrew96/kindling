@@ -58,6 +58,7 @@ function SparkCard({
   onRevive?: () => void
 }) {
   const isCold = spark.status === 'cold'
+  const tags = spark.tags ?? []
 
   return (
     <div
@@ -73,9 +74,9 @@ function SparkCard({
       </p>
 
       {/* Tags */}
-      {spark.tags.length > 0 && (
+      {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {spark.tags.map((tag) => (
+          {tags.map((tag) => (
             <span
               key={tag}
               className="text-xs px-2 py-0.5 rounded-full"
@@ -281,7 +282,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     .filter((s) => s.status === tab)
     .filter((s) =>
       !search || s.content.toLowerCase().includes(search.toLowerCase()) ||
-      s.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+      (s.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
     )
 
   const counts: Record<Tab, number> = {

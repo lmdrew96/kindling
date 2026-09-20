@@ -214,7 +214,7 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       const tag = args.tag as string | undefined
       const limit = typeof args.limit === 'number' ? args.limit : undefined
       let sparks = await listSparks(token, status)
-      if (tag) sparks = sparks.filter((s) => s.tags.includes(tag))
+      if (tag) sparks = sparks.filter((s) => (s.tags ?? []).includes(tag))
       if (limit) sparks = sparks.slice(0, limit)
       if (sparks.length === 0) return text('No sparks found.')
       return text(sparks.map(formatSpark).join('\n'))
@@ -227,7 +227,7 @@ async function handleToolCall(token: string, name: string, args: ToolArgs): Prom
       const all = await listSparks(token)
       const matches = all.filter((s) => {
         const contentOk = query ? s.content.toLowerCase().includes(query) : true
-        const tagsOk = tags?.length ? s.tags.some((t) => tags.includes(t)) : true
+        const tagsOk = tags?.length ? (s.tags ?? []).some((t) => tags.includes(t)) : true
         if (query && tags?.length) return contentOk && tagsOk
         return query ? contentOk : tagsOk
       })
@@ -306,7 +306,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.1.0' },
+          serverInfo: { name: 'kindling', version: '0.1.1' },
         })
 
       case 'notifications/initialized':
