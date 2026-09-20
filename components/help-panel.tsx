@@ -79,8 +79,10 @@ export function HelpPanel({
           <div className="space-y-1 border-t border-border pt-3">
             <p className="text-xs font-semibold text-fg">Your token</p>
             <p className="text-xs">
-              This is your account — no email, no password, no recovery. Anyone with it can read
-              your sparks; without it, nobody can, including you.
+              This token is the credential. Anyone with it can read your sparks; without it,
+              nobody can. Attach an account under <strong className="text-fg">Save token</strong>{' '}
+              and Kindling will remember it for you, so a lost copy stops meaning a lost corpus.
+              The token itself never changes, so your MCP URL keeps working either way.
             </p>
             <TokenDisplay token={token} />
           </div>

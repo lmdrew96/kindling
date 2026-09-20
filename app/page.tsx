@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { KindlingApp } from './kindling-app'
 import { TOKEN_COOKIE } from '@/lib/token-cookie'
+import { SESSION_COOKIE, accountFromSessionId, publicAccount } from '@/lib/auth'
 import { UUID_RE } from '@/components/ui'
 
 /**
@@ -12,8 +13,20 @@ import { UUID_RE } from '@/components/ui'
  * dashboard shell, never an empty body waiting on hydration.
  */
 export default async function Page() {
-  const stored = (await cookies()).get(TOKEN_COOKIE)?.value
-  const initialToken = stored && UUID_RE.test(stored) ? stored : null
+  const jar = await cookies()
 
-  return <KindlingApp initialToken={initialToken} />
+  // The account's token wins when signed in; otherwise whatever this browser
+  // remembers. Resolving the session here rather than in an effect is what
+  // keeps a signed-in user from flashing the landing page on every load.
+  const account = await accountFromSessionId(jar.get(SESSION_COOKIE)?.value)
+
+  const stored = jar.get(TOKEN_COOKIE)?.value
+  const cookieToken = stored && UUID_RE.test(stored) ? stored : null
+
+  return (
+    <KindlingApp
+      initialToken={account?.token ?? cookieToken}
+      initialAccount={account ? publicAccount(account) : null}
+    />
+  )
 }

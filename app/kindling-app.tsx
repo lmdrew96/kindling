@@ -26,6 +26,7 @@ import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
 import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
+import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -433,9 +434,18 @@ function SparkCard({
 
 // ─── Token gate ───────────────────────────────────────────────────────────────
 
-function TokenGate({ onToken }: { onToken: (t: string) => void }) {
+function TokenGate({
+  onToken,
+  account,
+  onAccount,
+}: {
+  onToken: (t: string) => void
+  account: PublicAccount | null
+  onAccount: (a: PublicAccount | null) => void
+}) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
+  const [showAccount, setShowAccount] = useState(false)
   // A freshly minted token is held here until the user confirms they've saved
   // it. Generating used to drop them straight into the dashboard having never
   // shown them the one string they cannot afford to lose.
@@ -470,9 +480,9 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
               Save this token
             </h1>
             <p className="text-sm leading-relaxed text-fg-muted">
-              It <strong className="text-fg">is</strong> your account — no email, no password,
-              no recovery. Anyone with it can read your sparks; without it, nobody can,
-              including you.
+              It is the credential. Anyone with it can read your sparks; without it, nobody
+              can, including you. You can attach an email and password later so Kindling
+              remembers it for you — the token itself never changes.
             </p>
           </div>
 
@@ -560,6 +570,28 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
           </div>
 
           {error && <p className="text-xs text-danger">{error}</p>}
+
+          {/* Third route in, and deliberately last: an account is optional and
+              the two options above still work without one. */}
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              onClick={() => setShowAccount((v) => !v)}
+              aria-expanded={showAccount}
+              className="text-xs text-fg-subtle underline underline-offset-4 hover:text-fg transition-colors cursor-pointer"
+            >
+              {showAccount ? 'Hide account options' : 'Or use an email and password'}
+            </button>
+          </div>
+
+          {showAccount && (
+            <AccountPanel
+              account={account}
+              token={null}
+              onAccount={onAccount}
+              onClose={() => setShowAccount(false)}
+            />
+          )}
         </div>
       </div>
     </main>
@@ -609,7 +641,18 @@ const inTab = (spark: Spark, tab: Tab): boolean =>
     ? isPromoted(spark)
     : spark.status === tab && !(tab === 'archived' && isPromoted(spark))
 
-function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+function Dashboard({
+  token,
+  account,
+  onAccount,
+  onSignOut,
+}: {
+  token: string
+  account: PublicAccount | null
+  onAccount: (a: PublicAccount | null) => void
+  onSignOut: () => void
+}) {
+  const [showAccount, setShowAccount] = useState(false)
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('recall')
@@ -1185,16 +1228,38 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
             <button
               type="button"
-              onClick={() => setConfirmForget(true)}
+              onClick={() => setShowAccount((v) => !v)}
+              aria-expanded={showAccount}
+              title={account ? `Signed in as ${account.email}` : 'Save your token to an account'}
               className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
             >
-              Clear token
+              {account ? 'Account' : 'Save token'}
             </button>
+            {/* Only meaningful for a browser holding a token on its own — with
+                an account there is something to come back to. */}
+            {!account && (
+              <button
+                type="button"
+                onClick={() => setConfirmForget(true)}
+                className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+              >
+                Clear token
+              </button>
+            )}
           </div>
         </div>
 
         {showHelp && (
           <HelpPanel mcpUrl={mcpUrl} token={token} onClose={() => setShowHelp(false)} />
+        )}
+
+        {showAccount && (
+          <AccountPanel
+            account={account}
+            token={token}
+            onAccount={onAccount}
+            onClose={() => setShowAccount(false)}
+          />
         )}
 
         {/* Recall results. Kept as a distinct panel rather than reordering the
@@ -1475,18 +1540,29 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 /**
- * `initialToken` is read from the cookie by the server component in page.tsx,
- * so the first paint is already the correct screen. This used to hold a
- * `ready` flag and return null until a localStorage effect had run, which
- * meant the server sent an empty body and every load flashed blank.
+ * `initialToken` and `initialAccount` are resolved by the server component in
+ * page.tsx, so the first paint is already the correct screen. This used to
+ * hold a `ready` flag and return null until a localStorage effect had run,
+ * which meant the server sent an empty body and every load flashed blank.
+ *
+ * An account, when there is one, only decides WHICH token is in play. It is
+ * never a gate: a token with no account behind it works exactly as before.
  */
-export function KindlingApp({ initialToken }: { initialToken: string | null }) {
+export function KindlingApp({
+  initialToken,
+  initialAccount,
+}: {
+  initialToken: string | null
+  initialAccount: PublicAccount | null
+}) {
   const [token, setToken] = useState<string | null>(initialToken)
+  const [account, setAccount] = useState<PublicAccount | null>(initialAccount)
 
   /**
    * Adopts a token saved before the cookie existed. Only runs when the server
-   * found no cookie, so for everyone else this is a no-op and there is no
-   * flash. Users migrating this way see the gate for one paint, once.
+   * found neither a session nor a cookie, so for everyone else this is a
+   * no-op and there is no flash. Users migrating this way see the gate for
+   * one paint, once.
    */
   useEffect(() => {
     if (initialToken) return
@@ -1500,13 +1576,48 @@ export function KindlingApp({ initialToken }: { initialToken: string | null }) {
 
   const adopt = (t: string) => setToken(t)
 
+  /**
+   * Signing in or out repoints this browser at the account's token. The
+   * localStorage copy is deliberately never rewritten, so a token that lives
+   * only in this browser cannot be lost by using an account.
+   */
+  const onAccount = (next: PublicAccount | null) => {
+    setAccount(next)
+    if (next) {
+      writeTokenCookie(next.token)
+      setToken(next.token)
+      return
+    }
+    // Signed out. Fall back to whatever this browser remembers on its own.
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem('kindling:token')
+    } catch {
+      /* private mode */
+    }
+    if (saved && UUID_RE.test(saved)) {
+      writeTokenCookie(saved)
+      setToken(saved)
+    } else {
+      clearTokenCookie()
+      setToken(null)
+    }
+  }
+
   const signOut = () => {
     localStorage.removeItem('kindling:token')
     clearTokenCookie()
     setToken(null)
   }
 
-  if (!token) return <TokenGate onToken={adopt} />
+  if (!token) return <TokenGate onToken={adopt} account={account} onAccount={onAccount} />
 
-  return <Dashboard token={token} onSignOut={signOut} />
+  return (
+    <Dashboard
+      token={token}
+      account={account}
+      onAccount={onAccount}
+      onSignOut={signOut}
+    />
+  )
 }

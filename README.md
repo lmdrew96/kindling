@@ -17,6 +17,7 @@ It runs as a Next.js app that serves two things from one deployment:
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [Tokens and the Security Model](#tokens-and-the-security-model)
+- [Accounts](#accounts)
 - [Connecting to Claude](#connecting-to-claude)
 - [MCP Tools Reference](#mcp-tools-reference)
 - [The Recall Algorithm](#the-recall-algorithm)
@@ -108,20 +109,67 @@ Open the dashboard, click **Get my Kindling URL →** to mint a token, then use 
 
 ## Tokens and the Security Model
 
-Kindling has **no accounts and no login.** A token is a v4 UUID that acts as both your identity and your namespace — every spark is stored under a key derived from it.
+A token is a v4 UUID that acts as both your identity and your namespace — every spark is stored under a key derived from it. **The token is the credential**, with or without an account.
+
+Accounts are **optional and are not an access layer.** An account is a bookmark that remembers which token is yours so you can get back in on another device; it gates nothing. A token with no account behind it works exactly as it always has, and the MCP endpoint never checks for a session at all — every `/{token}/mcp` URL already pasted into a client config keeps working unchanged. See [Accounts](#accounts) below.
 
 **How a token comes into existence:** the dashboard generates one client-side with `crypto.randomUUID()` and stores it in `localStorage` under `kindling:token`. Nothing is registered server-side. Any syntactically valid UUID is accepted by the server and simply addresses an empty (or existing) namespace.
 
 That has some direct consequences worth being clear-eyed about:
 
 - **The token is a bearer secret.** Anyone who has your URL has full read/write access to your sparks. Treat the MCP URL like a password, not like a username.
-- **There is no recovery.** Lose the token and you lose the namespace. The dashboard's **Switch token** button clears `localStorage` — copy the token somewhere durable before you use it.
+- **Recovery depends on whether you made an account.** Without one, losing the token means losing the namespace — copy it somewhere durable. With one, log in and Kindling hands the token back. There is still no password reset, because there is no mail sender.
 - **Namespaces are isolated but not authenticated.** A token guarantees your data doesn't collide with anyone else's; it doesn't prove anyone is who they say they are.
 - **The URL path contains the secret.** Path segments show up in server access logs and browser history more readily than headers do.
 
 This is a deliberate trade for a single-user personal tool where the friction of OAuth would kill the capture habit. If Kindling ever becomes multi-tenant in a real sense, this is the first thing that needs to change.
 
 The token format is validated against a strict UUID regex on every request. Malformed tokens get a `404` on the MCP route and a `400` on the REST API.
+
+---
+
+## Accounts
+
+Optional. Email and password, no third-party auth provider. The pattern is ported from `personal-context-mcp` and Tangle, which use the same one.
+
+**What an account does:** remembers which token is yours. That is all it does.
+
+**What it deliberately does not do:** gate anything. No middleware, no session check on the MCP route, no per-spark authorization. The only route that requires a session is `POST /api/link`, because linking acts on an account rather than on a token.
+
+### Key space
+
+Account records live alongside the spark namespaces, under their own prefix:
+
+| Key | Value |
+|---|---|
+| `kindling:account:{email}` | the account record, including the token it points at |
+| `kindling:session:{sid}` | the email, with a 30-day TTL |
+| `kindling:tokenowner:{token}` | the owning email — absence means unowned |
+| `kindling:rl:{scope}:{id}` | rate-limit counters, keyed by a hash so a raw IP never becomes a key name |
+
+### Passwords and sessions
+
+PBKDF2-HMAC-SHA256, 600,000 iterations, a 16-byte per-user salt and a 32-byte derived key, all via Web Crypto — no bcrypt dependency. The iteration count and hash are stored on the record, so raising the cost later does not lock out existing accounts. Comparison is constant-time.
+
+Sessions are opaque 32-byte random ids in Redis behind an `HttpOnly; Secure; SameSite=Lax` cookie. No JWT and no signing secret. `/api/auth` and `/api/link` pin `runtime = 'nodejs'`, because 600k PBKDF2 iterations are far too much CPU for the edge runtime.
+
+Login returns the same message for an unknown address and a wrong password, so the endpoint cannot be used to enumerate accounts. Signup deliberately *does* say when an address is taken — the alternative is a user who cannot tell why their account will not create.
+
+### Linking an existing token
+
+The retrofit path, for anyone who used Kindling before accounts existed.
+
+**The linked token wins.** The account is repointed at it rather than the sparks being copied across, because the token is what every already-configured MCP client has in its config. Rotating it would silently break all of them.
+
+The account's previous token is **released, never deleted**: its sparks stay exactly where they were and stay reachable at their own URL. The response reports how many sparks the previous namespace held, so the dashboard can say so rather than silently orphaning them.
+
+A token already owned by another account returns `403`. Pasting a whole Kindling URL where a token is expected works — the UUID is extracted — because an unknown token addresses an *empty* namespace rather than erroring, and a near-miss would render as a perfectly valid Kindling with nothing in it.
+
+### What is still missing
+
+- **No password reset.** There is no mail sender. Keep the token backed up as well.
+- **No email verification.**
+- **One token per account.** Work-vs-personal namespaces would need a token list rather than a single field.
 
 ---
 
@@ -547,6 +595,41 @@ Body is a partial `Spark` — the fields in it are merged over the existing reco
 
 **Note:** this endpoint merges whatever fields you send without validating them against the `Spark` shape. It's built for the dashboard's two known operations; treat it as an internal API rather than a public one.
 
+### `PATCH /api/tags?token={token}`
+
+```json
+{ "from": "Writing", "to": "writing", "restrict_to": ["<spark id>", "..."] }
+```
+
+Renames a tag across every spark carrying it, matching case-insensitively. Merging is the same operation when `to` already exists. `restrict_to` is optional and scopes the rewrite to specific sparks — it exists so an undo can reverse exactly what changed, since reversing across the whole store would also rename sparks that carried the target tag first.
+
+**Responses:** `200` with `{ changed: string[], merged: boolean }` · `400` on bad token or body
+
+### `POST /api/auth`
+
+One endpoint, discriminated by `action`. Takes no token — this is the account layer, not the data layer.
+
+| `action` | Body | Returns |
+|---|---|---|
+| `me` | — | `{ account }` or `{ account: null }` |
+| `signup` | `email`, `password` | `{ account }` and a session cookie |
+| `login` | `email`, `password` | `{ account }` and a session cookie |
+| `logout` | — | `{ account: null }` and a cleared cookie |
+
+The returned account is always the public projection — `email`, `token`, `createdAt`. The password hash and salt never leave the server.
+
+**Responses:** `200` · `400` bad email or short password · `401` bad credentials · `409` address already registered on signup · `429` rate limited
+
+### `POST /api/link`
+
+```json
+{ "token": "<a token, or a whole Kindling URL>" }
+```
+
+Repoints the signed-in account at that token. Requires a session — the only route in the app that does.
+
+**Responses:** `200` with `{ account, previous, previousSparkCount }` · `400` unparseable token · `401` not signed in · `403` the token belongs to another account
+
 ---
 
 ## MCP Protocol Details
@@ -555,7 +638,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.18.0" }` — read from `package.json`, so it tracks the release automatically.
+- **Server info:** `{ name: "kindling", version: "0.19.0" }` — read from `package.json`, so it tracks the release automatically.
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods
@@ -602,7 +685,7 @@ Type is Raela Grotesque for body and Kineks Round for display, loaded from `bran
 - **Tabs** — Active / Cold / Archived, each with a live count.
 - **Spark cards** — content, tag pills, relative capture age, surface count, and a cold indicator. Archive on anything not already archived; Revive on cold sparks.
 - **Copy MCP URL** — builds the connector URL from the current origin.
-- **Switch token** — clears `localStorage` and returns to the gate.
+- **Save token / Account** — attach an optional email and password, or link a different token. **Clear token** only appears when there is no account attached, since with one there is something to come back to.
 - **Toasts** — transient confirmations, auto-dismissing after 2.5s.
 
 Empty states are per-tab and explain the mechanic rather than just stating emptiness ("Sparks with no interaction for 180 days move here automatically").
@@ -671,8 +754,7 @@ Honest notes on the current state:
 - **Every operation loads the full hash into memory.** `kindling_list` pages over that array, so model context is bounded, but the read itself is not — this is the thing that will need an index first if a store ever gets large.
 - **`findDuplicatePairs` is O(n²)** over the store. Fine at current scale, and the per-capture check in `kindle` is O(n), but it's the first thing here that won't scale to thousands of sparks.
 - **No rate limiting** on either the MCP or REST surface.
-- **The dashboard renders nothing server-side.** `Home` gates on a `localStorage` read, so the served HTML has an empty body and the page is blank until hydration.
-- **No accounts.** The token is the account: no email, no password, no recovery. Export early and often.
+- **No password reset**, and no email verification. An account recovers a token, but a forgotten password is unrecoverable — export early and often regardless.
 
 Fixed since this list was written: `zod` now guards every MCP tool input and the `PATCH /api/sparks` body; `kindling_recall`'s `context` parameter biases the ranking rather than being decorative.
 

@@ -144,7 +144,7 @@ const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
 
   kindling_export:
     'Export the whole corpus as markdown or JSON — every spark, with tags, timestamps and promotion provenance.\n\n' +
-    'Offer it whenever the user talks about backing up, moving their notes elsewhere, or worries about losing things. Until Kindling has accounts, one token in one browser is the only handle on everything they have captured, so a copy elsewhere is genuinely valuable. markdown pastes into a note; json round-trips exactly.',
+    'Offer it whenever the user talks about backing up, moving their notes elsewhere, or worries about losing things. Accounts are optional in Kindling, so for many users one token in one browser is still the only handle on everything they have captured, and a copy elsewhere is genuinely valuable. markdown pastes into a note; json round-trips exactly.',
 
   kindling_batch_archive:
     'Archive many sparks in one call.\n\n' +
