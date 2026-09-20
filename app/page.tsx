@@ -24,6 +24,7 @@ import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
 import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
+import { HelpPanel } from '@/components/help-panel'
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -485,6 +486,32 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
           </p>
         </div>
 
+        {/* The landing page previously explained nothing, so someone arriving
+            cold had no idea what they were being given a URL for. */}
+        <dl className="space-y-2 text-left text-xs text-fg-muted">
+          <div>
+            <dt className="inline font-semibold text-fg">A spark </dt>
+            <dd className="inline">
+              is a thought worth keeping but not worth doing yet — an idea, an aside, a
+              half-formed connection.
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-semibold text-fg">Kindling decides </dt>
+            <dd className="inline">
+              what to show you, ranking by age and neglect, so old ideas resurface instead of
+              sinking.
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-semibold text-fg">Connect it to Claude </dt>
+            <dd className="inline">
+              and it can capture a stray idea mid-conversation without being asked. That&rsquo;s
+              the part a notes app can&rsquo;t do.
+            </dd>
+          </div>
+        </dl>
+
         <div className="space-y-3 text-left">
           <button
             type="button"
@@ -586,6 +613,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [promoting, setPromoting] = useState<Spark | null>(null)
   const [recalled, setRecalled] = useState<Spark[] | null>(null)
   const [recalling, setRecalling] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -623,6 +651,19 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   }, [token])
 
   useEffect(() => { load() }, [load])
+
+  // Opens itself once, for someone who has just been handed an MCP URL and no
+  // idea what to do with it. Never again after that — see ND anti-pattern #8.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('kindling:seen-help')) {
+        setShowHelp(true)
+        localStorage.setItem('kindling:seen-help', '1')
+      }
+    } catch {
+      /* private mode: just don't auto-open */
+    }
+  }, [])
 
   useEffect(() => {
     fetchPrefs(token)
@@ -1058,10 +1099,20 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </a>
             <button
               type="button"
-              onClick={copyMcp}
+              onClick={() => { copyMcp(); setShowHelp(true) }}
+              aria-expanded={showHelp}
+              title="Copy your MCP URL and show how to connect it"
               className="text-xs px-3 min-h-11 rounded-lg bg-cold/15 border border-cold/40 text-cold-text hover:bg-cold/25 transition-colors cursor-pointer"
             >
-              {mcpCopied ? 'Copied ✓' : 'Copy MCP URL'}
+              {mcpCopied ? 'Copied ✓' : 'Connect'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHelp((v) => !v)}
+              aria-expanded={showHelp}
+              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+            >
+              Help
             </button>
             <button
               type="button"
@@ -1072,6 +1123,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </button>
           </div>
         </div>
+
+        {showHelp && (
+          <HelpPanel mcpUrl={mcpUrl} token={token} onClose={() => setShowHelp(false)} />
+        )}
 
         {/* Recall results. Kept as a distinct panel rather than reordering the
             list, so it's clear these are the ones the algorithm picked — and
