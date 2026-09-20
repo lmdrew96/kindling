@@ -107,8 +107,17 @@ body {
    middle of the ramp is the first thing to become ambiguous, so collapse it to
    the two audited endpoints and drop the bloom entirely. */
 @media (prefers-contrast: more) {
+  /* The wash is inline style, so overriding it needs !important. Dropping it
+     returns the card to the background its text tokens were audited against,
+     which is the whole point of raised contrast — otherwise the rail snaps to
+     a solid endpoint while the tint it was tuned against stays put. */
   [data-heat] {
     box-shadow: none !important;
+    background-color: var(--color-surface) !important;
+  }
+
+  [data-heat='cold'] {
+    background-color: var(--color-bg) !important;
   }
 
   [data-heat='warm'] {

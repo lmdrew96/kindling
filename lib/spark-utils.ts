@@ -406,3 +406,18 @@ export const sparkHeat = (
   const neglect = Math.min(Math.max(daysSinceInteraction / decayThresholdDays, 0), 1)
   return 1 - neglect
 }
+
+/**
+ * The curve the UI paints heat along — NOT the heat value itself.
+ *
+ * `sparkHeat` is the honest quantity and stays linear, because the semantics
+ * depend on it: zero has to mean "exactly at the cold threshold". But a tended
+ * store lives almost entirely at the top of that range. Measured against a real
+ * one: all 19 active sparks sat above 0.66, so every card rendered in the same
+ * tier and the ramp did nothing at all.
+ *
+ * Cubing spreads the crowded top end back out — 180 days still maps to 0 and
+ * "touched today" still maps to 1, so the endpoints keep their meaning, but the
+ * first few weeks now occupy most of the visible range instead of a sliver.
+ */
+export const heatEmphasis = (heat: number): number => heat ** 3

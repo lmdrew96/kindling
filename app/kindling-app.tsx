@@ -17,6 +17,7 @@ import {
   relativeAge,
   scoreSpark,
   sparkHeat,
+  heatEmphasis,
   tagCounts,
 } from '@/lib/spark-utils'
 import { Markdown } from '@/components/markdown'
@@ -227,7 +228,9 @@ function SparkCard({
   // `now` is left to default inside the helper rather than read here, the same
   // way isSnoozed and relativeAge already do it on this card — sparks only ever
   // render after a client fetch, so there is no server render to disagree with.
-  const heat = sparkHeat(spark, undefined, decayDays)
+  const trueHeat = sparkHeat(spark, undefined, decayDays)
+  // Paint along the emphasis curve, not the raw value — see heatEmphasis.
+  const heat = trueHeat === null ? null : heatEmphasis(trueHeat)
   const heatColor =
     heat === null
       ? null
@@ -251,7 +254,7 @@ function SparkCard({
         backgroundColor: chilly
           ? 'var(--color-bg)'
           : `color-mix(in oklch, ${heatColor} ${hot ? 9 : 4}%, var(--color-surface))`,
-        ...(heat !== null && heat >= 0.85
+        ...(hot
           ? {
               boxShadow:
                 '-10px 0 28px -12px color-mix(in srgb, var(--color-primary) 26%, transparent)',
@@ -260,7 +263,10 @@ function SparkCard({
       }
     : undefined
 
-  const heatBucket = heat === null ? undefined : heat >= 0.85 ? 'warm' : heat < 0.15 ? 'cold' : 'cooling'
+  // Must use the same cuts as `hot`/`chilly` above: these buckets drive the
+  // prefers-contrast override, and two partitions meant it addressed cards it
+  // was never tuned against.
+  const heatBucket = heat === null ? undefined : hot ? 'warm' : chilly ? 'cold' : 'cooling'
 
   return (
     <div
@@ -446,7 +452,7 @@ function SparkCard({
             or keyboard focus and float clear of the flow, which is what lets a
             card collapse to the height of its content. Small screens and touch
             keep them in view, since there is no hover to reveal them there. */}
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface-raised/95 sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
           {isCold && onRevive && (
             <button
               type="button"
@@ -479,7 +485,9 @@ function SparkCard({
               type="button"
               onClick={onPromote}
               title="Record that this became something real"
-              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+              // The 10% fill lightened its own backdrop enough to put marigold
+              // text at 4.48 — just under AA. 5% keeps the accent and clears it.
+              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/5 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
             >
               Promote
             </button>
