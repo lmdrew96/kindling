@@ -329,7 +329,7 @@ export async function POST(
         return ok(id, {
           protocolVersion: negotiateVersion(requested),
           capabilities: { tools: {} },
-          serverInfo: { name: 'kindling', version: '0.4.0' },
+          serverInfo: { name: 'kindling', version: '0.5.0' },
         })
       }
 

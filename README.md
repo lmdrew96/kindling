@@ -431,7 +431,7 @@ The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 impl
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
-- **Server info:** `{ name: "kindling", version: "0.4.0" }`
+- **Server info:** `{ name: "kindling", version: "0.5.0" }`
 - **Capabilities:** `{ tools: {} }` — tools only; no resources, prompts, or sampling.
 
 ### Supported methods

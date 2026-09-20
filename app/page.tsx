@@ -23,20 +23,19 @@ async function kindleApi(token: string, content: string, tags: string[]): Promis
   return res.json()
 }
 
-async function archiveApi(token: string, id: string): Promise<void> {
-  await fetch(`/api/sparks?token=${token}&id=${id}`, {
+/**
+ * Moves a spark between statuses. Every status change in the app goes through
+ * here, so there is one place that checks res.ok — the previous archive/revive
+ * helpers ignored the response entirely and reported success unconditionally.
+ */
+async function setStatusApi(token: string, id: string, status: SparkStatus): Promise<void> {
+  const res = await fetch(`/api/sparks?token=${token}&id=${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'archived' }),
+    // Returning to active clears the cold clock; nothing else should.
+    body: JSON.stringify(status === 'active' ? { status, cold_at: null } : { status }),
   })
-}
-
-async function reviveApi(token: string, id: string): Promise<void> {
-  await fetch(`/api/sparks?token=${token}&id=${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'active', cold_at: null }),
-  })
+  if (!res.ok) throw new Error(`Failed to set status to ${status}`)
 }
 
 // ─── Shared class strings ────────────────────────────────────────────────────
@@ -62,10 +61,12 @@ function SparkCard({
   spark,
   onArchive,
   onRevive,
+  onUnarchive,
 }: {
   spark: Spark
   onArchive?: () => void
   onRevive?: () => void
+  onUnarchive?: () => void
 }) {
   const isCold = spark.status === 'cold'
   const tags = spark.tags ?? []
@@ -149,6 +150,15 @@ function SparkCard({
               className="text-xs px-2.5 py-1 rounded-lg bg-cold/15 text-cold-text border border-cold/40 hover:bg-cold/25 transition-colors cursor-pointer"
             >
               Revive
+            </button>
+          )}
+          {onUnarchive && (
+            <button
+              type="button"
+              onClick={onUnarchive}
+              className={`text-xs px-2.5 py-1 ${BTN_GHOST}`}
+            >
+              Unarchive
             </button>
           )}
           {onArchive && (
@@ -235,6 +245,11 @@ function TokenGate({ onToken }: { onToken: (t: string) => void }) {
   )
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+type ToastAction = { label: string; run: () => void }
+type ToastState = { message: string; action?: ToastAction }
+
 // ─── Sorting ──────────────────────────────────────────────────────────────────
 
 type SortKey = 'recall' | 'newest' | 'oldest' | 'neglected'
@@ -268,8 +283,9 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [kindleText, setKindleText] = useState('')
   const [tagInput, setTagInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [kindling, setKindling] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
   const [mcpCopied, setMcpCopied] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
 
@@ -277,17 +293,30 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     ? `${window.location.origin}/${token}/mcp`
     : `https://kindling.adhdesigns.dev/${token}/mcp`
 
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2500)
-  }
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showToast = useCallback((message: string, action?: ToastAction) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ message, action })
+    // An undoable toast sticks around long enough to actually be clicked.
+    toastTimer.current = setTimeout(() => setToast(null), action ? 7000 : 2500)
+  }, [])
+
+  const dismissToast = useCallback(() => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast(null)
+  }, [])
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const data = await fetchSparks(token)
       setSparks(data)
     } catch {
-      showToast('Failed to load sparks — check your connection.')
+      // Never fall through to the empty state here. Telling someone their idea
+      // store is empty when the fetch simply failed is the worst possible lie
+      // for this particular app.
+      setLoadError("Couldn't load your sparks. This is a connection problem, not an empty store.")
     } finally {
       setLoading(false)
     }
@@ -313,17 +342,58 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }
 
-  const handleArchive = async (spark: Spark) => {
-    await archiveApi(token, spark.id)
-    setSparks((prev) => prev.map((s) => s.id === spark.id ? { ...s, status: 'archived' } : s))
-    showToast('Archived.')
-  }
+  /**
+   * Optimistic status change with rollback. The previous version updated local
+   * state and toasted success whether or not the write landed, so a failed
+   * PATCH left the user looking at a change that had not happened.
+   */
+  const changeStatus = useCallback(
+    async (spark: Spark, next: SparkStatus, message: string, undoable = true) => {
+      const previous = spark.status
+      const apply = (status: SparkStatus) =>
+        setSparks((prev) =>
+          prev.map((s) =>
+            s.id === spark.id
+              ? { ...s, status, ...(status === 'active' ? { cold_at: null } : {}) }
+              : s
+          )
+        )
 
-  const handleRevive = async (spark: Spark) => {
-    await reviveApi(token, spark.id)
-    setSparks((prev) => prev.map((s) => s.id === spark.id ? { ...s, status: 'active', cold_at: null } : s))
-    showToast('Spark revived — back in the fire.')
-  }
+      apply(next)
+      try {
+        await setStatusApi(token, spark.id, next)
+        showToast(
+          message,
+          undoable
+            ? {
+                label: 'Undo',
+                run: () => {
+                  dismissToast()
+                  void changeStatus(
+                    { ...spark, status: next },
+                    previous,
+                    'Undone.',
+                    false
+                  )
+                },
+              }
+            : undefined
+        )
+      } catch {
+        apply(previous)
+        showToast(`Couldn't save that change — the spark is still ${previous}.`)
+      }
+    },
+    [token, showToast, dismissToast]
+  )
+
+  const handleArchive = (spark: Spark) => changeStatus(spark, 'archived', 'Archived.')
+
+  const handleRevive = (spark: Spark) =>
+    changeStatus(spark, 'active', 'Spark revived — back in the fire.')
+
+  const handleUnarchive = (spark: Spark) =>
+    changeStatus(spark, 'active', 'Unarchived — back in the fire.')
 
   const copyMcp = () => {
     navigator.clipboard.writeText(mcpUrl)
@@ -354,12 +424,32 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
 
   return (
     <main className="min-h-screen bg-bg text-fg">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 text-sm px-4 py-2 rounded-lg z-50 pointer-events-none bg-surface-raised border border-border-strong text-fg">
-          {toast}
-        </div>
-      )}
+      {/* Toast. role=status so changes are announced; only pointer-events-none
+          when there is nothing to click, or the Undo button would be dead. */}
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex justify-center px-4"
+      >
+        {toast && (
+          <div
+            className={`flex items-center gap-3 text-sm px-4 py-2 rounded-lg bg-surface-raised border border-border-strong text-fg ${
+              toast.action ? '' : 'pointer-events-none'
+            }`}
+          >
+            <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                type="button"
+                onClick={toast.action.run}
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary text-on-primary hover:bg-primary-hover hover:text-fg transition-colors cursor-pointer"
+              >
+                {toast.action.label}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
 
@@ -465,6 +555,17 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
         {/* Sparks list */}
         {loading ? (
           <p className="text-sm py-8 text-center text-fg-subtle">Loading your sparks…</p>
+        ) : loadError ? (
+          <div className="py-12 text-center space-y-3" role="alert">
+            <p className="text-sm font-medium text-danger">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => { setLoading(true); void load() }}
+              className={`text-sm px-4 py-2.5 min-h-11 ${BTN_GHOST}`}
+            >
+              Retry
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={!!search} />
         ) : (
@@ -475,6 +576,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
                 spark={spark}
                 onArchive={spark.status !== 'archived' ? () => handleArchive(spark) : undefined}
                 onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
+                onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}
               />
             ))}
           </div>
