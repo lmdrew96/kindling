@@ -1,4 +1,4 @@
-import type { Spark } from './types'
+import type { Spark, SparkKind } from './types'
 
 /**
  * Pure helpers over a Spark. Deliberately free of any Redis import so both the
@@ -65,6 +65,46 @@ export const deriveTitle = (content: string): string => {
 /** The title to show for a spark, stored or derived. */
 export const displayTitle = (spark: Spark): string =>
   spark.title?.trim() || deriveTitle(spark.content)
+
+// ─── Sorting old sparks ──────────────────────────────────────────────────────
+
+/**
+ * Tag → kind hints for the one-time sort. Only ever a SUGGESTION shown for a
+ * confirm; nothing is written from it directly. First match wins, in the
+ * order the kinds are listed here.
+ */
+const KIND_HINTS: Array<[SparkKind, string[]]> = [
+  ['story', ['fiction', 'story', 'stories', 'character', 'novel', 'worldbuilding']],
+  ['app-feature', ['chaoslimba', 'feyforge', 'controlledchaos', 'chaospatch', 'kindling', 'app', 'feature', 'dev', 'ui', 'ux']],
+  ['research', ['sla', 'research', 'linguistics', 'psycholinguistics', 'study']],
+  ['reading', ['reading', 'read', 'book', 'books', 'article']],
+  ['essay', ['essay', 'substack', 'writing', 'nonfiction']],
+]
+
+export const suggestKind = (tags: readonly string[]): SparkKind | null => {
+  const have = new Set(tags.map(normalizeTag))
+  for (const [kind, hints] of KIND_HINTS) {
+    if (hints.some((h) => have.has(h))) return kind
+  }
+  return null
+}
+
+/**
+ * For a spark with no stored title: the derived title, and the body without
+ * that first line — but only when the title is the WHOLE first line. A
+ * truncated title would lose the rest of the line, and a one-line spark would
+ * be left with no body, so neither offers the strip.
+ */
+export const firstLineAsTitle = (
+  spark: Spark
+): { title: string; strippedContent: string | null } => {
+  const title = deriveTitle(spark.content)
+  const lines = spark.content.split('\n')
+  const first = lines.findIndex((l) => l.trim().length > 0)
+  const rest = lines.slice(first + 1).join('\n').trim()
+  const whole = !title.endsWith('…')
+  return { title: title.replace(/…$/, ''), strippedContent: whole && rest ? rest : null }
+}
 
 // ─── Density ─────────────────────────────────────────────────────────────────
 

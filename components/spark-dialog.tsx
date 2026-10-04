@@ -6,7 +6,7 @@ import { displayTitle } from '@/lib/spark-utils'
 import { BTN_GHOST, BTN_PRIMARY, INPUT } from './ui'
 
 /** Shared chrome for the two editing dialogs. */
-function Shell({
+export function Shell({
   title,
   labelledBy,
   onCancel,

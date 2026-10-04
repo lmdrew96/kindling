@@ -26,6 +26,7 @@ import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
 import { EditSparkDialog, PromoteDialog, type SparkEdit } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
+import { SortDialog, type SortPatch } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 import { Sidebar, type View } from '@/components/sidebar'
@@ -769,6 +770,10 @@ function Dashboard({
   // Dismissed spotlight, by spark id — a different spark rising to the top
   // still gets its moment. Lives for this page session only.
   const [spotlightDismissed, setSpotlightDismissed] = useState<string | null>(null)
+  // The sort review works over a snapshot, so saving one doesn't reshuffle
+  // the queue under the user's hands.
+  const [sortQueue, setSortQueue] = useState<Spark[] | null>(null)
+  const [sortPromptDismissed, setSortPromptDismissed] = useState(false)
   // The title is the composer's always-mounted field, so it's what `c` focuses.
   const kindleRef = useRef<HTMLInputElement>(null)
   const ideaRef = useRef<HTMLTextAreaElement>(null)
@@ -1174,6 +1179,18 @@ function Dashboard({
     }
   }
 
+  /** One step of the sort review. Quiet on success — the dialog moving on is the feedback. */
+  const handleSort = async (spark: Spark, patch: SortPatch) => {
+    const previous = sparks
+    setSparks((prev) => prev.map((s) => (s.id === spark.id ? { ...s, ...patch } : s)))
+    try {
+      await patchSparkApi(token, spark.id, patch)
+    } catch {
+      setSparks(previous)
+      showToast(`Couldn't save "${displayTitle(spark)}" — it's still unsorted.`)
+    }
+  }
+
   const handlePromote = async (spark: Spark, target: string, notes: string | null) => {
     setPromoting(null)
     const previous = sparks
@@ -1310,6 +1327,9 @@ function Dashboard({
     null
   const showSpotlight = spotlight !== null && spotlight.id !== spotlightDismissed
 
+  // Concluded sparks (archived, promoted) aren't worth a sorting pass.
+  const unsorted = sparks.filter((s) => !s.kind && s.status !== 'archived')
+
   const counts = Object.fromEntries(
     TABS.map((t) => [t, sparks.filter((s) => inTab(s, t)).length])
   ) as Record<Tab, number>
@@ -1349,6 +1369,14 @@ function Dashboard({
           knownHomes={knownHomes}
           onCancel={() => setEditing(null)}
           onSave={(patch) => void handleEdit(editing, patch)}
+        />
+      )}
+
+      {sortQueue && (
+        <SortDialog
+          queue={sortQueue}
+          onSave={(spark, patch) => void handleSort(spark, patch)}
+          onClose={() => setSortQueue(null)}
         />
       )}
 
@@ -1489,6 +1517,33 @@ function Dashboard({
             {recalling ? 'Recalling…' : 'Recall 5'}
           </button>
         </div>
+
+        {/* The one-time sort for sparks from before kinds existed. Goes away
+            on its own once nothing live is unsorted. */}
+        {!loading && unsorted.length > 0 && !sortPromptDismissed && !searching && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-4 py-2.5">
+            <p className="text-sm text-fg-muted">
+              <span className="font-mono text-fg">{unsorted.length}</span> spark
+              {unsorted.length === 1 ? ' has' : 's have'} no kind yet — from before kinds existed.
+            </p>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setSortPromptDismissed(true)}
+                className={`text-xs px-3 min-h-9 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortQueue(unsorted.slice().sort(COMPARATORS.newest))}
+                className={`text-xs px-3 min-h-9 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+              >
+                Sort them →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* At a glance: the counts, then the one spark recall would pick. */}
         {!loading && !loadError && sparks.length > 0 && !searching && (
