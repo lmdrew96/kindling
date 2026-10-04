@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import { Geist_Mono } from 'next/font/google'
 import './globals.css'
+import { THEME_SCRIPT } from '@/lib/theme'
 
 const raelaGrotesque = localFont({
   variable: '--font-raela',
@@ -53,7 +54,17 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${raelaGrotesque.variable} ${kineksRound.variable} ${geistMono.variable}`}>
+    // THEME_SCRIPT sets data-theme before hydration, so the attribute is
+    // expected to differ from the server render.
+    <html
+      lang="en"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${raelaGrotesque.variable} ${kineksRound.variable} ${geistMono.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         {/*
           The dashboard shell server-renders a capture box, tabs and a sort

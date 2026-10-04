@@ -29,7 +29,7 @@ import { HelpPanel } from '@/components/help-panel'
 import { SortDialog, type SortPatch } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
-import { Sidebar, type View } from '@/components/sidebar'
+import { Sidebar, ThemeToggle, type View } from '@/components/sidebar'
 
 // The origin never changes within a page's life, so there is nothing to
 // subscribe to — this exists only to satisfy useSyncExternalStore's signature.
@@ -1448,9 +1448,10 @@ function Dashboard({
       <div className="max-w-5xl mx-auto px-5 md:px-8 py-6 md:py-8 space-y-6">
 
         {/* The wordmark lives in the sidebar on desktop; small screens get it here. */}
-        <p className="md:hidden font-display text-2xl font-bold tracking-tight text-primary">
-          Kindling
-        </p>
+        <div className="md:hidden flex items-center justify-between">
+          <p className="font-display text-2xl font-bold tracking-tight text-primary">Kindling</p>
+          <ThemeToggle compact />
+        </div>
 
         {view === 'stats' &&
           (sparks.length > 0 ? (

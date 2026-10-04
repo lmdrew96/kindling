@@ -58,6 +58,53 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Light — the same ember identity in daylight: warm paper surfaces, plum-
+   charcoal text, and the ember burnt darker so it still reads as text. Cards
+   are the lightest step here (they lift off the page); the panel sits just
+   below the page. Same audit as above, same "bg / panel / raised / hover"
+   order; hover is still the binding surface.
+
+   data-theme is the RESOLVED mode — lib/theme.ts turns "system" into light or
+   dark before paint — so this is the only light block.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f6efe6;
+  --color-surface: #efe6da;
+  --color-surface-raised: #fcf8f3;
+  --color-surface-hover: #e6dacb;
+  --color-border: rgb(60 30 45 / 0.1);
+  --color-border-strong: rgb(60 30 45 / 0.2);
+
+  --color-fg: #231a28; /* 14.73 / 13.60 / 15.89 / 12.21 */
+  --color-fg-muted: #4f4248; /*  8.35 /  7.71 /  9.01 /  6.92 */
+  --color-fg-subtle: #6b5c58; /*  5.58 /  5.16 /  6.02 /  4.63 — do not go dimmer */
+
+  /* Ember as text needs to be this dark to clear 4.5 on hover (5.09). The fill
+     takes the raised card colour as its label (6.62; 8.79 on hover). */
+  --color-primary: #8f440b;
+  --color-primary-hover: #733608;
+  --color-on-primary: #fcf8f3;
+
+  --color-hot: #d9572e;
+  --color-cold: #6c84a8;
+  --color-cold-text: #3d5980; /* 6.26 / 5.78 / 6.76 / 5.19 */
+
+  --color-tag-bg: #e6dacb;
+  --color-tag-fg: #4f4248; /* 6.92 */
+
+  --color-danger: #b0322a; /* 5.52 / 5.10 / 5.95 / 4.57 */
+
+  --color-ring: #8f440b;
+}
+
 html {
   background: var(--color-bg);
 }

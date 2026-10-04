@@ -1,6 +1,7 @@
 'use client'
 
 import { useSyncExternalStore } from 'react'
+import { readTheme, subscribeTheme, writeTheme, type ThemePref } from '@/lib/theme'
 
 export type View = 'sparks' | 'stats' | 'connect' | 'help' | 'account'
 
@@ -51,6 +52,61 @@ const itemClass = (active: boolean): string =>
       ? 'bg-surface-hover text-fg font-semibold shadow-[inset_3px_0_0_var(--color-primary)]'
       : 'text-fg-muted hover:bg-surface-hover/60 hover:text-fg'
   }`
+
+const THEMES: Array<{ pref: ThemePref; label: string; glyph: string }> = [
+  { pref: 'dark', label: 'Dark', glyph: '☾' },
+  { pref: 'light', label: 'Light', glyph: '☀' },
+  { pref: 'system', label: 'System', glyph: '◐' },
+]
+
+/**
+ * Dark / light / system. Full size it is three visible choices, so the current
+ * one is never a guess; compact (collapsed rail, phone header) it is one button
+ * that cycles and says in its label what it will switch to.
+ */
+export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+  // Server snapshot is the default; the head script has already painted the
+  // real choice, and this catches up on hydration.
+  const pref = useSyncExternalStore(subscribeTheme, readTheme, () => 'dark' as const)
+
+  if (compact) {
+    const i = THEMES.findIndex((t) => t.pref === pref)
+    const current = THEMES[i]
+    const next = THEMES[(i + 1) % THEMES.length]
+    return (
+      <button
+        type="button"
+        onClick={() => writeTheme(next.pref)}
+        aria-label={`Theme: ${current.label}. Switch to ${next.label}`}
+        title={`Theme: ${current.label}`}
+        className="flex size-9 items-center justify-center rounded-lg text-fg-subtle hover:bg-surface-hover hover:text-fg transition-colors cursor-pointer"
+      >
+        <span aria-hidden="true">{current.glyph}</span>
+      </button>
+    )
+  }
+
+  return (
+    <div role="group" aria-label="Theme" className="flex rounded-lg border border-border p-0.5">
+      {THEMES.map((t) => (
+        <button
+          key={t.pref}
+          type="button"
+          onClick={() => writeTheme(t.pref)}
+          aria-pressed={pref === t.pref}
+          className={`flex min-h-9 flex-1 items-center justify-center gap-1 rounded-md text-xs transition-colors cursor-pointer ${
+            pref === t.pref
+              ? 'bg-surface-hover text-fg font-semibold'
+              : 'text-fg-subtle hover:text-fg'
+          }`}
+        >
+          <span aria-hidden="true">{t.glyph}</span>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /**
  * The app shell's navigation. Exactly one item carries the active indicator —
@@ -184,6 +240,9 @@ export function Sidebar({
               </dl>
             </div>
           )}
+          <div className={collapsed ? 'flex justify-center' : 'mx-1'}>
+            <ThemeToggle compact={collapsed} />
+          </div>
           <div className="flex flex-col gap-1">
             {navButton(accountItem, collapsed)}
             {/* Only meaningful for a browser holding a token on its own — with
