@@ -2,7 +2,7 @@
 
 A remote MCP server for capturing sparks of thought — and surfacing them again before they go cold.
 
-Kindling is an idea inbox with a memory. You capture a half-formed thought mid-conversation (a phrase, a project seed, a link, a "what if"), and it sits in a store that actively works against forgetting: a recall algorithm resurfaces whatever has waited longest and been touched least, and anything untouched for 180 days quietly goes cold so you can triage it deliberately instead of letting it rot silently.
+Kindling is where ideas go to be developed. Raw thoughts get caught somewhere else (Loose Change); the ones worth keeping come here, with a title, a kind, a home and a next step. A recall algorithm resurfaces whatever has waited longest and been touched least, and anything untouched for 180 days quietly goes cold, so you can triage it deliberately instead of letting it rot.
 
 It runs as a Next.js app that serves two things from one deployment:
 

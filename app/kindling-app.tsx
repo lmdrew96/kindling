@@ -598,8 +598,9 @@ function TokenGate({
           <div>
             <dt className="inline font-semibold text-fg">A spark </dt>
             <dd className="inline">
-              is a thought worth keeping but not worth doing yet — an idea, an aside, a
-              half-formed connection.
+              is an idea you&rsquo;ve decided is worth keeping — titled, sorted, and waiting
+              for its turn. Not a passing thought (that&rsquo;s what Loose Change is for), and
+              not a task.
             </dd>
           </div>
           <div>
@@ -612,8 +613,8 @@ function TokenGate({
           <div>
             <dt className="inline font-semibold text-fg">Connect it to Claude </dt>
             <dd className="inline">
-              and it can capture a stray idea mid-conversation without being asked. That&rsquo;s
-              the part a notes app can&rsquo;t do.
+              and you can kindle an idea mid-conversation, or ask what&rsquo;s worth another
+              look. The ideas you meant to come back to actually come back.
             </dd>
           </div>
         </dl>
@@ -2016,7 +2017,7 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
   const messages: Record<Tab, { heading: string; sub: string }> = {
     active: {
       heading: 'No active sparks yet.',
-      sub: 'Capture something above — an idea, a link, a half-formed thought.',
+      sub: 'Capture one above — give it a title, pick a kind, and say what the idea is.',
     },
     cold: {
       heading: 'Nothing has gone cold.',

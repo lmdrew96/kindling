@@ -42,9 +42,10 @@ export function HelpPanel({
       {section === 'connect' ? (
         <div className="space-y-4 text-sm text-fg-muted">
           <p>
-            Connecting Kindling to Claude is the whole point — it&rsquo;s what lets Claude notice
-            a stray idea mid-conversation and capture it without being asked. Point a client at
-            this URL:
+            Connecting Kindling to Claude means you can say &ldquo;kindle that&rdquo;
+            mid-conversation and the idea lands here — titled, sorted, with a next step if there
+            is one. Claude will offer when something sounds worth keeping, but it won&rsquo;t
+            file things on its own. Point a client at this URL:
           </p>
 
           <CopyRow label="Your MCP endpoint" value={mcpUrl} />
@@ -78,8 +79,9 @@ export function HelpPanel({
       ) : (
         <dl className="space-y-3 text-sm text-fg-muted">
           <Entry term="Spark">
-            A thought worth keeping but not worth doing yet — an idea, an aside, a half-formed
-            connection. Not a task: concrete work belongs in a task tracker.
+            An idea worth keeping and shaping, but not worth doing yet. Each one has a title, a
+            kind, and optionally a home and a next step. Raw, passing thoughts belong in Loose
+            Change; concrete work belongs in a task tracker.
           </Entry>
           <Entry term="Recall">
             Kindling ranks sparks by how old they are, how long they&rsquo;ve been neglected, and
