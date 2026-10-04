@@ -1,4 +1,4 @@
-import type { Spark, SparkStatus } from './types'
+import { KIND_LABELS, type Spark, type SparkStatus } from './types'
 import { displayTitle } from './spark-utils'
 
 /**
@@ -57,6 +57,8 @@ export const toMarkdown = (sparks: Spark[], now: number = Date.now()): string =>
 const sparkBlock = (spark: Spark): string[] => {
   const tags = spark.tags ?? []
   const meta = [`Captured ${day(spark.created_at)}`]
+  if (spark.kind) meta.unshift(KIND_LABELS[spark.kind])
+  if (spark.home) meta.push(`home: ${spark.home}`)
   if (spark.surface_count > 0) {
     meta.push(
       `surfaced ${spark.surface_count}×${
@@ -67,6 +69,7 @@ const sparkBlock = (spark: Spark): string[] => {
   if (tags.length) meta.push(`tags: ${tags.join(', ')}`)
 
   const block = [`### ${displayTitle(spark)}`, '', `*${meta.join(' · ')}*`, '', spark.content, '']
+  if (spark.next_step) block.push(`**Next:** ${spark.next_step}`, '')
 
   if (spark.promoted_to) {
     block.push(

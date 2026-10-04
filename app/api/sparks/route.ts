@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { archiveSparks, createSpark, deleteSpark, getSpark, listSparks, updateSpark } from '@/lib/sparks'
 import { exportFilename, toJson, toMarkdown } from '@/lib/export'
-import type { Spark, SparkStatus } from '@/lib/types'
+import { SPARK_KINDS, type Spark, type SparkStatus } from '@/lib/types'
 
 export const runtime = 'nodejs'
 
@@ -16,9 +16,23 @@ const PatchBody = z
     tags: z.array(z.string().min(1)).optional(),
     snooze_until: z.number().int().nullable().optional(),
     standing: z.boolean().optional(),
+    kind: z.enum(SPARK_KINDS).nullable().optional(),
+    home: z.string().trim().max(120).nullable().optional(),
+    next_step: z.string().trim().max(300).nullable().optional(),
     // "I looked at this": the same clock reset recall applies, for one spark.
     // A flag rather than raw fields so a caller can't write the clock directly.
     surface: z.literal(true).optional(),
+  })
+  .strict()
+
+const CreateBody = z
+  .object({
+    title: z.string().trim().min(1, 'title is required').max(200),
+    kind: z.enum(SPARK_KINDS),
+    content: z.string().trim().min(1, 'content is required').max(100_000),
+    home: z.string().trim().max(120).optional(),
+    next_step: z.string().trim().max(300).optional(),
+    tags: z.array(z.string().min(1)).optional(),
   })
   .strict()
 
@@ -57,14 +71,22 @@ export async function POST(req: NextRequest) {
   const token = getToken(req)
   if (!token) return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
 
-  const { content, tags, title } = await req.json() as {
-    content: string
-    tags?: string[]
-    title?: string
+  // Capture on the web is deliberate, so title and kind are required here.
+  const parsed = CreateBody.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid spark', detail: parsed.error.issues.map((i) => i.message).join('; ') },
+      { status: 400 }
+    )
   }
-  if (!content?.trim()) return NextResponse.json({ error: 'content is required' }, { status: 400 })
+  const { content, tags, title, kind, home, next_step } = parsed.data
 
-  const spark = await createSpark(token, content.trim(), tags ?? [], title ?? null)
+  const spark = await createSpark(token, content, tags ?? [], title, {
+    kind,
+    home: home || null,
+    next_step: next_step || null,
+    source: 'web',
+  })
   return NextResponse.json(spark, { status: 201 })
 }
 

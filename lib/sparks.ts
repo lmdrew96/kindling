@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { redis, indexKey } from './redis'
-import type { Spark, SparkStatus } from './types'
+import type { Spark, SparkExtras, SparkStatus } from './types'
 import {
   DAY_MS,
   canGoCold,
@@ -24,7 +24,8 @@ export const createSpark = async (
   token: string,
   content: string,
   tags: string[] = [],
-  title: string | null = null
+  title: string | null = null,
+  extras: SparkExtras = {}
 ): Promise<Spark> => {
   const spark: Spark = {
     id: uuidv4(),
@@ -41,6 +42,11 @@ export const createSpark = async (
     cold_at: null,
     snooze_until: null,
     standing: false,
+    kind: extras.kind ?? null,
+    home: extras.home?.trim() || null,
+    next_step: extras.next_step?.trim() || null,
+    source: extras.source ?? null,
+    source_ref: extras.source_ref ?? null,
   }
   await redis.hset(indexKey(token), { [spark.id]: spark })
   return spark

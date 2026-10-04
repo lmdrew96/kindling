@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { Spark } from '@/lib/types'
+import { KIND_LABELS, SPARK_KINDS, type Spark, type SparkKind } from '@/lib/types'
 import { displayTitle } from '@/lib/spark-utils'
 import { BTN_GHOST, BTN_PRIMARY, INPUT } from './ui'
 
@@ -50,19 +50,33 @@ function Shell({
  * Editing was MCP-only: you could not fix a typo in something you captured
  * without opening a Claude client.
  */
+export type SparkEdit = {
+  title: string | null
+  content: string
+  tags: string[]
+  kind: SparkKind | null
+  home: string | null
+  next_step: string | null
+}
+
 export function EditSparkDialog({
   spark,
   knownTags,
+  knownHomes,
   onCancel,
   onSave,
 }: {
   spark: Spark
   knownTags: string[]
+  knownHomes: string[]
   onCancel: () => void
-  onSave: (patch: { title: string | null; content: string; tags: string[] }) => void
+  onSave: (patch: SparkEdit) => void
 }) {
   const [title, setTitle] = useState(spark.title ?? '')
+  const [kind, setKind] = useState<SparkKind | null>(spark.kind ?? null)
   const [content, setContent] = useState(spark.content)
+  const [home, setHome] = useState(spark.home ?? '')
+  const [nextStep, setNextStep] = useState(spark.next_step ?? '')
   const [tagText, setTagText] = useState((spark.tags ?? []).join(', '))
   const contentRef = useRef<HTMLTextAreaElement>(null)
 
@@ -74,13 +88,16 @@ export function EditSparkDialog({
       title: title.trim() || null,
       content: content.trim(),
       tags: tagText.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
+      kind,
+      home: home.trim() || null,
+      next_step: nextStep.trim() || null,
     })
   }
 
   return (
     <Shell title="Edit spark" labelledBy="edit-title" onCancel={onCancel}>
       <label className="block space-y-1">
-        <span className="text-xs text-fg-muted">Title (optional)</span>
+        <span className="text-xs text-fg-muted">Title</span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -89,8 +106,31 @@ export function EditSparkDialog({
         />
       </label>
 
+      {/* Older sparks have no kind; picking one here is how they get sorted. */}
+      <div className="space-y-1">
+        <span className="text-xs text-fg-muted">Kind</span>
+        <div role="radiogroup" aria-label="Kind" className="flex flex-wrap gap-1.5">
+          {SPARK_KINDS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={kind === k}
+              onClick={() => setKind((cur) => (cur === k ? null : k))}
+              className={`rounded-md border px-2.5 min-h-8 pointer-coarse:min-h-11 text-xs transition-colors cursor-pointer ${
+                kind === k
+                  ? 'border-primary/60 bg-primary/15 text-primary font-semibold'
+                  : 'border-border-strong text-fg-muted hover:bg-surface-hover hover:text-fg'
+              }`}
+            >
+              {KIND_LABELS[k]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <label className="block space-y-1">
-        <span className="text-xs text-fg-muted">Content</span>
+        <span className="text-xs text-fg-muted">The idea</span>
         <textarea
           ref={contentRef}
           value={content}
@@ -99,6 +139,33 @@ export function EditSparkDialog({
           className={`w-full resize-y text-sm px-3 py-2.5 leading-relaxed ${INPUT}`}
         />
       </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-xs text-fg-muted">Home (optional)</span>
+          <input
+            value={home}
+            onChange={(e) => setHome(e.target.value)}
+            list="known-homes-edit"
+            maxLength={120}
+            className={`w-full text-sm px-3 py-2.5 ${INPUT}`}
+          />
+          <datalist id="known-homes-edit">
+            {knownHomes.map((h) => (
+              <option key={h} value={h} />
+            ))}
+          </datalist>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs text-fg-muted">Next step (optional)</span>
+          <input
+            value={nextStep}
+            onChange={(e) => setNextStep(e.target.value)}
+            maxLength={300}
+            className={`w-full text-sm px-3 py-2.5 ${INPUT}`}
+          />
+        </label>
+      </div>
 
       <label className="block space-y-1">
         <span className="text-xs text-fg-muted">Tags (comma-separated)</span>

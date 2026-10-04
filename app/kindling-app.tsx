@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
-import type { Spark, SparkStatus } from '@/lib/types'
+import { KIND_LABELS, SPARK_KINDS, type Spark, type SparkKind, type SparkSource, type SparkStatus } from '@/lib/types'
 import {
   DECAY_THRESHOLD_DAYS,
   absoluteDate,
@@ -24,7 +24,7 @@ import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
-import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
+import { EditSparkDialog, PromoteDialog, type SparkEdit } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
@@ -43,11 +43,20 @@ async function fetchSparks(token: string): Promise<Spark[]> {
   return res.json()
 }
 
-async function kindleApi(token: string, content: string, tags: string[]): Promise<Spark> {
+type NewSpark = {
+  title: string
+  kind: SparkKind
+  content: string
+  home?: string
+  next_step?: string
+  tags: string[]
+}
+
+async function kindleApi(token: string, spark: NewSpark): Promise<Spark> {
   const res = await fetch(`/api/sparks?token=${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, tags }),
+    body: JSON.stringify(spark),
   })
   if (!res.ok) throw new Error('Failed to kindle spark')
   return res.json()
@@ -66,6 +75,15 @@ async function batchArchiveApi(token: string, ids: string[]): Promise<string[]> 
   })
   if (!res.ok) throw new Error('Failed to archive selection')
   return (await res.json()).archived as string[]
+}
+
+/** How a card names who captured it. Web is the default and says nothing. */
+const SOURCE_LABELS: Record<SparkSource, string> = {
+  web: 'from the web',
+  coru: 'via Coru',
+  cody: 'via Cody',
+  claude: 'via Claude',
+  'loose-change': 'from Loose Change',
 }
 
 /** More than this and the chips start to outweigh the idea. */
@@ -284,6 +302,15 @@ function SparkCard({
         </label>
       )}
 
+      {/* Kind and home as an eyebrow: what sort of idea, and where it lives. */}
+      {(spark.kind || spark.home) && (
+        <p className="pl-[1.125rem] text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-fg-subtle">
+          {spark.kind && KIND_LABELS[spark.kind]}
+          {spark.kind && spark.home && ' · '}
+          {spark.home && <span className="normal-case tracking-normal">{spark.home}</span>}
+        </p>
+      )}
+
       {/* Title is the expand control. Collapsed, the card shows a plain-text
           glimpse; expanded, the full body renders as markdown inline. */}
       <button
@@ -311,6 +338,12 @@ function SparkCard({
           preview && <p className="line-clamp-2 text-sm leading-relaxed text-fg-muted">{preview}</p>
         )}
       </div>
+
+      {spark.next_step && (
+        <p className="pl-[1.125rem] text-xs text-fg-muted">
+          <span className="font-semibold text-fg">Next:</span> {spark.next_step}
+        </p>
+      )}
 
       {/* Promotion record. The whole point of the system. */}
       {promoted && (
@@ -359,6 +392,9 @@ function SparkCard({
               · surfaced {spark.surface_count}×
               {spark.last_surfaced_at && `, last ${relativeAge(spark.last_surfaced_at)}`}
             </span>
+          )}
+          {spark.source && spark.source !== 'web' && (
+            <span>· {SOURCE_LABELS[spark.source]}</span>
           )}
           {isCold && (
             <span className="text-cold-text">
@@ -672,6 +708,14 @@ const COMPARATORS: Record<SortKey, (a: Spark, b: Spark) => number> = {
   neglected: (a, b) => lastTouched(a) - lastTouched(b),
 }
 
+// ─── Kind filter ─────────────────────────────────────────────────────────────
+
+/** 'unsorted' finds the sparks captured before kinds existed. */
+type KindFilter = SparkKind | 'all' | 'unsorted'
+
+const matchesKind = (s: Spark, k: KindFilter): boolean =>
+  k === 'all' ? true : k === 'unsorted' ? !s.kind : s.kind === k
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 type Tab = (typeof TABS)[number]
@@ -699,9 +743,14 @@ function Dashboard({
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('recall')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const [search, setSearch] = useState('')
+  const [kindleTitle, setKindleTitle] = useState('')
+  const [kindleKind, setKindleKind] = useState<SparkKind | null>(null)
   const [kindleText, setKindleText] = useState('')
+  const [kindleHome, setKindleHome] = useState('')
+  const [kindleNext, setKindleNext] = useState('')
   const [tagChips, setTagChips] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')
   const [composerFocused, setComposerFocused] = useState(false)
@@ -720,7 +769,9 @@ function Dashboard({
   // Dismissed spotlight, by spark id — a different spark rising to the top
   // still gets its moment. Lives for this page session only.
   const [spotlightDismissed, setSpotlightDismissed] = useState<string | null>(null)
-  const kindleRef = useRef<HTMLTextAreaElement>(null)
+  // The title is the composer's always-mounted field, so it's what `c` focuses.
+  const kindleRef = useRef<HTMLInputElement>(null)
+  const ideaRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // The origin is only knowable in the browser. Reading window.location straight
@@ -838,9 +889,9 @@ function Dashboard({
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Grow the capture box with its content rather than scrolling inside 3 rows.
+  // Grow the idea box with its content rather than scrolling inside 3 rows.
   useEffect(() => {
-    const el = kindleRef.current
+    const el = ideaRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`
@@ -850,7 +901,12 @@ function Dashboard({
   // and folds back only once it is both empty and blurred, so a half-written
   // thought never disappears behind a collapse.
   const composerOpen =
-    composerFocused || kindleText.length > 0 || tagChips.length > 0 || tagDraft.length > 0
+    composerFocused ||
+    [kindleTitle, kindleText, kindleHome, kindleNext, tagDraft].some((v) => v.length > 0) ||
+    kindleKind !== null ||
+    tagChips.length > 0
+
+  const canKindle = Boolean(kindleTitle.trim() && kindleKind && kindleText.trim())
 
   const commitTagDraft = (raw: string) => {
     const next = normalizeTags([...tagChips, ...raw.split(',')])
@@ -859,13 +915,24 @@ function Dashboard({
   }
 
   const handleKindle = async () => {
-    if (!kindleText.trim() || kindling) return
+    if (!canKindle || !kindleKind || kindling) return
     const tags = normalizeTags([...tagChips, ...tagDraft.split(',')])
     setKindling(true)
     try {
-      const spark = await kindleApi(token, kindleText.trim(), tags)
+      const spark = await kindleApi(token, {
+        title: kindleTitle.trim(),
+        kind: kindleKind,
+        content: kindleText.trim(),
+        ...(kindleHome.trim() ? { home: kindleHome.trim() } : {}),
+        ...(kindleNext.trim() ? { next_step: kindleNext.trim() } : {}),
+        tags,
+      })
       setSparks((prev) => [spark, ...prev])
+      setKindleTitle('')
+      setKindleKind(null)
       setKindleText('')
+      setKindleHome('')
+      setKindleNext('')
       setTagChips([])
       setTagDraft('')
       showToast('Spark kindled.')
@@ -1093,7 +1160,7 @@ function Dashboard({
 
   const handleEdit = async (
     spark: Spark,
-    patch: { title: string | null; content: string; tags: string[] }
+    patch: SparkEdit
   ) => {
     setEditing(null)
     const previous = sparks
@@ -1185,12 +1252,17 @@ function Dashboard({
   }
 
   const knownTags = tagCounts(sparks).map((t) => t.tag)
+  const knownHomes = Array.from(
+    new Set(sparks.map((s) => s.home?.trim()).filter((h): h is string => Boolean(h)))
+  ).sort((a, b) => a.localeCompare(b))
 
   const query = search.trim().toLowerCase()
   const matchesQuery = (s: Spark) =>
     !query ||
     s.content.toLowerCase().includes(query) ||
     (s.title ?? '').toLowerCase().includes(query) ||
+    (s.home ?? '').toLowerCase().includes(query) ||
+    (s.next_step ?? '').toLowerCase().includes(query) ||
     (s.tags ?? []).some((t) => t.toLowerCase().includes(query))
 
   // Searching looks everywhere. Scoping search to the open tab meant "I know I
@@ -1198,13 +1270,17 @@ function Dashboard({
   const exactHits = query ? sparks.filter(matchesQuery) : []
   // Same rule as MCP search: fall back to fuzzy only when exact finds nothing.
   const fuzzyFallback = query && exactHits.length === 0
-  const filtered = (
-    query
-      ? fuzzyFallback
-        ? sparks.filter((s) => fuzzyMatches(s, query))
-        : exactHits
-      : sparks.filter((s) => inTab(s, tab))
-  )
+  const unfiltered = query
+    ? fuzzyFallback
+      ? sparks.filter((s) => fuzzyMatches(s, query))
+      : exactHits
+    : sparks.filter((s) => inTab(s, tab))
+
+  // Kind narrows whatever the tab or search produced, and counts against it.
+  const kindCounts = (k: KindFilter): number => unfiltered.filter((s) => matchesKind(s, k)).length
+
+  const filtered = unfiltered
+    .filter((s) => matchesKind(s, kindFilter))
     // Redis hash order means nothing to a reader. Ranking by recall score is
     // the whole premise of the product, so it is also the default here.
     .sort(COMPARATORS[sort])
@@ -1270,6 +1346,7 @@ function Dashboard({
         <EditSparkDialog
           spark={editing}
           knownTags={knownTags}
+          knownHomes={knownHomes}
           onCancel={() => setEditing(null)}
           onSave={(patch) => void handleEdit(editing, patch)}
         />
@@ -1542,20 +1619,86 @@ function Dashboard({
             composerOpen ? 'border-border-strong p-4 space-y-3 shadow-lg' : 'border-border px-4 py-2.5'
           }`}
         >
-          <textarea
+          <input
             ref={kindleRef}
-            value={kindleText}
-            onChange={(e) => setKindleText(e.target.value)}
+            value={kindleTitle}
+            onChange={(e) => setKindleTitle(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
             }}
-            placeholder="What's on your mind? Capture it before it fades…"
-            aria-label="Capture a spark"
-            rows={composerOpen ? 3 : 1}
-            className="block w-full text-base outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
+            placeholder={composerOpen ? 'Title' : "What's the idea? Capture it before it fades…"}
+            aria-label="Spark title"
+            maxLength={200}
+            className={`block w-full bg-transparent text-fg outline-none placeholder:text-fg-subtle ${
+              composerOpen ? 'text-lg font-semibold' : 'text-base'
+            }`}
           />
           {composerOpen && (
             <>
+              {/* One tap, not a dropdown. Required, like the title and idea. */}
+              <div role="radiogroup" aria-label="Kind" className="flex flex-wrap gap-1.5">
+                {SPARK_KINDS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={kindleKind === k}
+                    onClick={() => setKindleKind((cur) => (cur === k ? null : k))}
+                    className={`rounded-md border px-2.5 min-h-8 pointer-coarse:min-h-11 text-xs transition-colors cursor-pointer ${
+                      kindleKind === k
+                        ? 'border-primary/60 bg-primary/15 text-primary font-semibold'
+                        : 'border-border-strong text-fg-muted hover:bg-surface-hover hover:text-fg'
+                    }`}
+                  >
+                    {KIND_LABELS[k]}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                ref={ideaRef}
+                value={kindleText}
+                onChange={(e) => setKindleText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
+                }}
+                placeholder="The idea — markdown welcome"
+                aria-label="The idea"
+                rows={3}
+                className={`block w-full resize-none overflow-y-auto px-3 py-2 text-[0.9375rem] leading-relaxed ${INPUT}`}
+              />
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  value={kindleHome}
+                  onChange={(e) => setKindleHome(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
+                  }}
+                  placeholder="Home (optional) — where it lives"
+                  aria-label="Home (optional)"
+                  list="known-homes"
+                  maxLength={120}
+                  className={`text-xs px-3 py-2 ${INPUT}`}
+                />
+                <datalist id="known-homes">
+                  {knownHomes.map((h) => (
+                    <option key={h} value={h} />
+                  ))}
+                </datalist>
+                <input
+                  value={kindleNext}
+                  onChange={(e) => setKindleNext(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
+                  }}
+                  placeholder="Next step (optional) — one line"
+                  aria-label="Next step (optional)"
+                  maxLength={300}
+                  className={`text-xs px-3 py-2 ${INPUT}`}
+                />
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 {/* Chip input: Enter or comma commits, Backspace on an empty
                     draft takes the last chip back. */}
@@ -1615,8 +1758,9 @@ function Dashboard({
                 <button
                   type="button"
                   onClick={() => void handleKindle()}
-                  disabled={!kindleText.trim()}
+                  disabled={!canKindle}
                   aria-busy={kindling}
+                  title={canKindle ? undefined : 'Needs a title, a kind and the idea'}
                   className={`text-sm px-5 min-h-11 ${BTN_PRIMARY}`}
                 >
                   {kindling ? 'Kindling…' : 'Kindle'}
@@ -1724,6 +1868,31 @@ function Dashboard({
           </label>
         </div>
 
+        {/* Kind filter. A filter, not navigation, so no ember: the active chip
+            just steps up a surface. Kinds with nothing in view are hidden. */}
+        {unfiltered.length > 0 && (
+          <div role="group" aria-label="Filter by kind" className="flex flex-wrap gap-1.5">
+            {(['all', ...SPARK_KINDS, 'unsorted'] as KindFilter[])
+              .filter((k) => k === 'all' || k === kindFilter || kindCounts(k) > 0)
+              .map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKindFilter(k)}
+                  aria-pressed={kindFilter === k}
+                  className={`flex items-center gap-1.5 rounded-md border px-2.5 min-h-8 pointer-coarse:min-h-11 text-xs transition-colors cursor-pointer ${
+                    kindFilter === k
+                      ? 'border-border-strong bg-surface-hover text-fg font-semibold'
+                      : 'border-border text-fg-muted hover:text-fg'
+                  }`}
+                >
+                  {k === 'all' ? 'All kinds' : k === 'unsorted' ? 'Unsorted' : KIND_LABELS[k]}
+                  <span className="font-mono text-[0.6875rem] text-fg-subtle">{kindCounts(k)}</span>
+                </button>
+              ))}
+          </div>
+        )}
+
         {/* Sparks list */}
         <div id="spark-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {loading ? (
@@ -1739,6 +1908,8 @@ function Dashboard({
               Retry
             </button>
           </div>
+        ) : filtered.length === 0 && unfiltered.length > 0 ? (
+          <p className="text-sm py-8 text-center text-fg-subtle">Nothing of that kind here.</p>
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={searching} />
         ) : (
