@@ -10,38 +10,26 @@ import { TokenDisplay } from './token-display'
  * (where do I paste this URL?) should be reachable at any time, not once.
  */
 export function HelpPanel({
+  section,
   mcpUrl,
   token,
   onClose,
 }: {
+  /** The sidebar picks the section, so there is one active indicator, not two. */
+  section: 'connect' | 'how'
   mcpUrl: string
   token: string
   onClose: () => void
 }) {
-  const [tab, setTab] = useState<'connect' | 'how'>('connect')
-
   return (
     <section
-      aria-label="Help"
+      aria-label={section === 'connect' ? 'Connect to Claude' : 'How Kindling works'}
       className="space-y-4 rounded-xl border border-border bg-surface p-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex gap-1">
-          {(['connect', 'how'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`min-h-11 rounded-lg px-3 text-xs transition-colors cursor-pointer ${
-                tab === t
-                  ? 'bg-primary/15 font-semibold text-primary underline underline-offset-4'
-                  : 'text-fg-subtle hover:text-fg-muted'
-              }`}
-            >
-              {t === 'connect' ? 'Connect to Claude' : 'How Kindling works'}
-            </button>
-          ))}
-        </div>
+        <h2 className="font-display text-sm font-bold text-fg">
+          {section === 'connect' ? 'Connect to Claude' : 'How Kindling works'}
+        </h2>
         <button
           type="button"
           onClick={onClose}
@@ -51,7 +39,7 @@ export function HelpPanel({
         </button>
       </div>
 
-      {tab === 'connect' ? (
+      {section === 'connect' ? (
         <div className="space-y-4 text-sm text-fg-muted">
           <p>
             Connecting Kindling to Claude is the whole point — it&rsquo;s what lets Claude notice

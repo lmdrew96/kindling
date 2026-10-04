@@ -30,6 +30,7 @@ import { EditSparkDialog, PromoteDialog } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
+import { Sidebar, type View } from '@/components/sidebar'
 
 // The origin never changes within a page's life, so there is nothing to
 // subscribe to — this exists only to satisfy useSyncExternalStore's signature.
@@ -786,7 +787,7 @@ function Dashboard({
   onAccount: (a: PublicAccount | null) => void
   onSignOut: () => void
 }) {
-  const [showAccount, setShowAccount] = useState(false)
+  const [view, setView] = useState<View>('sparks')
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('recall')
@@ -798,9 +799,7 @@ function Dashboard({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [kindling, setKindling] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
-  const [mcpCopied, setMcpCopied] = useState(false)
   const [confirmForget, setConfirmForget] = useState(false)
-  const [showStats, setShowStats] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<Spark | null>(null)
   const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
@@ -808,7 +807,6 @@ function Dashboard({
   const [promoting, setPromoting] = useState<Spark | null>(null)
   const [recalled, setRecalled] = useState<Spark[] | null>(null)
   const [recalling, setRecalling] = useState(false)
-  const [showHelp, setShowHelp] = useState(false)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -863,7 +861,7 @@ function Dashboard({
         // localStorage is unreadable during SSR, so this cannot move into a
         // state initializer.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setShowHelp(true)
+        setView('connect')
         localStorage.setItem('kindling:seen-help', '1')
       }
     } catch {
@@ -895,12 +893,16 @@ function Dashboard({
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return
 
+      // Both fields live in the Sparks view, so the shortcut takes you there
+      // first and focuses once it has rendered.
       if (e.key === 'c') {
         e.preventDefault()
-        kindleRef.current?.focus()
+        setView('sparks')
+        requestAnimationFrame(() => kindleRef.current?.focus())
       } else if (e.key === '/') {
         e.preventDefault()
-        searchRef.current?.focus()
+        setView('sparks')
+        requestAnimationFrame(() => searchRef.current?.focus())
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1220,12 +1222,6 @@ function Dashboard({
     }
   }
 
-  const copyMcp = () => {
-    navigator.clipboard.writeText(mcpUrl)
-    setMcpCopied(true)
-    setTimeout(() => setMcpCopied(false), 2000)
-  }
-
   const knownTags = tagCounts(sparks).map((t) => t.tag)
 
   const query = search.trim().toLowerCase()
@@ -1252,6 +1248,14 @@ function Dashboard({
     .sort(COMPARATORS[sort])
 
   const searching = query.length > 0
+
+  // Raw statuses for the sidebar — promoted sparks count as archived there,
+  // since that is what they are; the tab view splits them out.
+  const statusCounts = {
+    active: sparks.filter((s) => s.status === 'active').length,
+    cold: sparks.filter((s) => s.status === 'cold').length,
+    archived: sparks.filter((s) => s.status === 'archived').length,
+  }
 
   const counts = Object.fromEntries(
     TABS.map((t) => [t, sparks.filter((s) => inTab(s, t)).length])
@@ -1345,91 +1349,89 @@ function Dashboard({
         )}
       </div>
 
-      <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
+      <div className="flex min-h-screen">
+      <Sidebar
+        view={view}
+        onView={setView}
+        exportHref={`/api/sparks?token=${token}&format=markdown`}
+        account={account}
+        onClearToken={() => setConfirmForget(true)}
+        counts={statusCounts}
+      />
 
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h1 className="shrink-0 font-display text-2xl sm:text-3xl font-bold tracking-tight text-primary">
-            Kindling
-          </h1>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => void handleRecall()}
-              disabled={recalling}
-              title="Show the sparks most in need of attention"
-              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              {recalling ? 'Recalling…' : 'Recall'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowStats((v) => !v)}
-              aria-expanded={showStats}
-              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
-            >
-              Stats
-            </button>
-            <a
-              href={`/api/sparks?token=${token}&format=markdown`}
-              download
-              className="text-xs px-3 min-h-11 inline-flex items-center rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
-              title="Download every spark as a markdown file"
-            >
-              Export
-            </a>
-            <button
-              type="button"
-              onClick={() => { copyMcp(); setShowHelp(true) }}
-              aria-expanded={showHelp}
-              title="Copy your MCP URL and show how to connect it"
-              className="text-xs px-3 min-h-11 rounded-lg bg-cold/15 border border-cold/40 text-cold-text hover:bg-cold/25 transition-colors cursor-pointer"
-            >
-              {mcpCopied ? 'Copied ✓' : 'Connect'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowHelp((v) => !v)}
-              aria-expanded={showHelp}
-              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
-            >
-              Help
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAccount((v) => !v)}
-              aria-expanded={showAccount}
-              title={account ? `Signed in as ${account.email}` : 'Save your token to an account'}
-              className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
-            >
-              {account ? 'Account' : 'Save token'}
-            </button>
-            {/* Only meaningful for a browser holding a token on its own — with
-                an account there is something to come back to. */}
+      <div className="flex-1 min-w-0 pb-20 md:pb-0">
+      <div className="max-w-5xl mx-auto px-5 md:px-8 py-6 md:py-8 space-y-6">
+
+        {/* The wordmark lives in the sidebar on desktop; small screens get it here. */}
+        <p className="md:hidden font-display text-2xl font-bold tracking-tight text-primary">
+          Kindling
+        </p>
+
+        {view === 'stats' &&
+          (sparks.length > 0 ? (
+            <StatsPanel
+              sparks={sparks}
+              decayDays={decayDays}
+              onDecayChange={(d) => void handleDecayChange(d)}
+              onRenameTag={handleRenameTag}
+              onRemoveTag={handleRemoveTag}
+              onClose={() => setView('sparks')}
+            />
+          ) : (
+            <p className="py-12 text-center text-sm text-fg-subtle">
+              {loading ? 'Loading your sparks…' : 'No sparks yet — stats appear once you capture one.'}
+            </p>
+          ))}
+
+        {(view === 'connect' || view === 'help') && (
+          <HelpPanel
+            section={view === 'connect' ? 'connect' : 'how'}
+            mcpUrl={mcpUrl}
+            token={token}
+            onClose={() => setView('sparks')}
+          />
+        )}
+
+        {view === 'account' && (
+          <>
+            <AccountPanel
+              account={account}
+              token={token}
+              onAccount={onAccount}
+              onClose={() => setView('sparks')}
+            />
+            {/* The sidebar carries this on desktop; the bottom bar has no room. */}
             {!account && (
               <button
                 type="button"
                 onClick={() => setConfirmForget(true)}
-                className="text-xs px-3 min-h-11 rounded-lg text-fg-muted hover:text-fg transition-colors cursor-pointer"
+                className="md:hidden text-xs text-fg-subtle underline underline-offset-4 hover:text-fg transition-colors cursor-pointer"
               >
-                Clear token
+                Clear token from this browser
               </button>
             )}
+          </>
+        )}
+
+        {view === 'sparks' && (
+        <>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.2em] text-fg-subtle">
+              Overview
+            </p>
+            <h1 className="font-display text-2xl font-bold text-fg">Sparks</h1>
           </div>
+          <button
+            type="button"
+            onClick={() => void handleRecall()}
+            disabled={recalling}
+            title="Show the sparks most in need of attention"
+            className={`text-xs px-3 min-h-11 disabled:opacity-50 ${BTN_GHOST}`}
+          >
+            {recalling ? 'Recalling…' : 'Recall 5'}
+          </button>
         </div>
-
-        {showHelp && (
-          <HelpPanel mcpUrl={mcpUrl} token={token} onClose={() => setShowHelp(false)} />
-        )}
-
-        {showAccount && (
-          <AccountPanel
-            account={account}
-            token={token}
-            onAccount={onAccount}
-            onClose={() => setShowAccount(false)}
-          />
-        )}
 
         {/* Recall results. Kept as a distinct panel rather than reordering the
             list, so it's clear these are the ones the algorithm picked — and
@@ -1471,17 +1473,6 @@ function Dashboard({
               ))}
             </div>
           </section>
-        )}
-
-        {showStats && sparks.length > 0 && (
-          <StatsPanel
-            sparks={sparks}
-            decayDays={decayDays}
-            onDecayChange={(d) => void handleDecayChange(d)}
-            onRenameTag={handleRenameTag}
-            onRemoveTag={handleRemoveTag}
-            onClose={() => setShowStats(false)}
-          />
         )}
 
         {/* Kindle input */}
@@ -1679,6 +1670,10 @@ function Dashboard({
           </div>
         )}
         </div>
+        </>
+        )}
+      </div>
+      </div>
       </div>
     </main>
   )
