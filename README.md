@@ -610,11 +610,9 @@ Content is trimmed and must be non-empty. Tags default to `[]`.
 
 ### `PATCH /api/sparks?token={token}&id={sparkId}`
 
-Body is a partial `Spark` — the fields in it are merged over the existing record. The dashboard uses this for archive (`{"status":"archived"}`) and revive (`{"status":"active","cold_at":null}`).
+Body is a whitelisted partial update (validated with zod; unknown fields are rejected): `status`, `cold_at`, `title`, `content`, `tags`, `snooze_until`, `standing`, plus `surface: true` — "I looked at this", which sets `last_surfaced_at` to now and bumps `surface_count`, the same clock reset recall applies. The dashboard uses it for archive (`{"status":"archived"}`), revive (`{"status":"active","cold_at":null}`), edits, snooze, standing, and the spotlight's Revive (`{"surface":true}`).
 
-**Responses:** `200` with the updated `Spark` · `400` on bad token or missing `id` · `404` if the spark doesn't exist
-
-**Note:** this endpoint merges whatever fields you send without validating them against the `Spark` shape. It's built for the dashboard's two known operations; treat it as an internal API rather than a public one.
+**Responses:** `200` with the updated `Spark` · `400` on bad token, missing `id`, or an invalid body · `404` if the spark doesn't exist
 
 ### `PATCH /api/tags?token={token}`
 

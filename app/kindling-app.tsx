@@ -90,6 +90,16 @@ async function patchSparkApi(
   if (!res.ok) throw new Error('Failed to update spark')
 }
 
+async function surfaceApi(token: string, id: string): Promise<Spark> {
+  const res = await fetch(`/api/sparks?token=${token}&id=${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ surface: true }),
+  })
+  if (!res.ok) throw new Error('Failed to surface spark')
+  return res.json()
+}
+
 async function renameTagApi(
   token: string,
   from: string,
@@ -701,6 +711,9 @@ function Dashboard({
   const [promoting, setPromoting] = useState<Spark | null>(null)
   const [recalled, setRecalled] = useState<Spark[] | null>(null)
   const [recalling, setRecalling] = useState(false)
+  // Dismissed spotlight, by spark id — a different spark rising to the top
+  // still gets its moment. Lives for this page session only.
+  const [spotlightDismissed, setSpotlightDismissed] = useState<string | null>(null)
   const kindleRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -950,6 +963,26 @@ function Dashboard({
     }
   }
 
+  /** "I looked at this" — the clock reset recall applies, for one spark. */
+  const handleSurface = async (spark: Spark) => {
+    const previous = sparks
+    setSparks((prev) =>
+      prev.map((s) =>
+        s.id === spark.id
+          ? { ...s, last_surfaced_at: Date.now(), surface_count: s.surface_count + 1 }
+          : s
+      )
+    )
+    try {
+      const saved = await surfaceApi(token, spark.id)
+      setSparks((prev) => prev.map((s) => (s.id === saved.id ? saved : s)))
+      showToast('Back in the fire — its clock is reset.')
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't revive that.")
+    }
+  }
+
   const handleToggleStanding = async (spark: Spark) => {
     const next = !isStanding(spark)
     const previous = sparks
@@ -1164,6 +1197,21 @@ function Dashboard({
     archived: sparks.filter((s) => s.status === 'archived').length,
   }
 
+  // Orientation for the top of the list. All derived from the array already
+  // in hand — no extra request.
+  // eslint-disable-next-line react-hooks/purity -- sparks only render after a client fetch
+  const weekAgo = Date.now() - 7 * 86_400_000
+  const surfacedThisWeek = sparks.filter((s) => (s.last_surfaced_at ?? 0) >= weekAgo).length
+
+  // The spark recall would pick first. Shown passively — looking at the
+  // dashboard doesn't count as surfacing it; Revive does.
+  const spotlight =
+    sparks
+      .filter((s) => s.status === 'active' && !isSnoozed(s))
+      .sort((a, b) => scoreSpark(b, undefined, decayDays) - scoreSpark(a, undefined, decayDays))[0] ??
+    null
+  const showSpotlight = spotlight !== null && spotlight.id !== spotlightDismissed
+
   const counts = Object.fromEntries(
     TABS.map((t) => [t, sparks.filter((s) => inTab(s, t)).length])
   ) as Record<Tab, number>
@@ -1339,6 +1387,82 @@ function Dashboard({
             {recalling ? 'Recalling…' : 'Recall 5'}
           </button>
         </div>
+
+        {/* At a glance: the counts, then the one spark recall would pick. */}
+        {!loading && !loadError && sparks.length > 0 && !searching && (
+          <div className={`grid gap-3 ${showSpotlight ? 'lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]' : ''}`}>
+            <dl className="grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-surface">
+              {[
+                { label: 'Active', value: statusCounts.active },
+                { label: 'Cold', value: statusCounts.cold },
+                { label: 'Surfaced 7d', value: surfacedThisWeek },
+                { label: 'Promoted', value: counts.promoted },
+              ].map((stat) => (
+                <div key={stat.label} className="flex flex-col justify-center gap-0.5 px-3 py-3">
+                  <dd className="font-mono text-xl leading-none text-fg">{stat.value}</dd>
+                  <dt className="text-[0.6875rem] text-fg-subtle">{stat.label}</dt>
+                </div>
+              ))}
+            </dl>
+
+            {showSpotlight && spotlight && (
+              <section
+                aria-label="Worth another look"
+                className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-surface px-4 py-3 shadow-[inset_3px_0_0_var(--color-cold)]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-fg-subtle">
+                    Worth another look
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSpotlightDismissed(spotlight.id)}
+                    aria-label="Dismiss for now"
+                    className="rounded px-1.5 text-sm leading-none text-fg-subtle hover:text-fg cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-fg">{displayTitle(spotlight)}</p>
+                    <p className="font-mono text-[0.6875rem] text-fg-subtle">
+                      captured {relativeAge(spotlight.created_at)} ·{' '}
+                      {spotlight.surface_count === 0
+                        ? 'never surfaced'
+                        : `last seen ${relativeAge(spotlight.last_surfaced_at ?? spotlight.created_at)}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void handleSurface(spotlight)}
+                      title="Mark it seen — resets its decay clock"
+                      className={`text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+                    >
+                      Revive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSnooze(spotlight, 7)}
+                      title="Snooze for a week"
+                      className={`text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+                    >
+                      Snooze
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleArchive(spotlight)}
+                      className={`text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+                    >
+                      Archive
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
 
         {/* Recall results. Kept as a distinct panel rather than reordering the
             list, so it's clear these are the ones the algorithm picked — and

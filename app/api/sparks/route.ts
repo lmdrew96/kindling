@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { archiveSparks, createSpark, deleteSpark, listSparks, updateSpark } from '@/lib/sparks'
+import { archiveSparks, createSpark, deleteSpark, getSpark, listSparks, updateSpark } from '@/lib/sparks'
 import { exportFilename, toJson, toMarkdown } from '@/lib/export'
-import type { SparkStatus } from '@/lib/types'
+import type { Spark, SparkStatus } from '@/lib/types'
 
 export const runtime = 'nodejs'
 
@@ -16,6 +16,9 @@ const PatchBody = z
     tags: z.array(z.string().min(1)).optional(),
     snooze_until: z.number().int().nullable().optional(),
     standing: z.boolean().optional(),
+    // "I looked at this": the same clock reset recall applies, for one spark.
+    // A flag rather than raw fields so a caller can't write the clock directly.
+    surface: z.literal(true).optional(),
   })
   .strict()
 
@@ -86,7 +89,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No updatable fields provided' }, { status: 400 })
   }
 
-  const spark = await updateSpark(token, id, parsed.data)
+  const { surface, ...fields } = parsed.data
+  let updates: Partial<Spark> = fields
+  if (surface) {
+    const existing = await getSpark(token, id)
+    if (!existing) return NextResponse.json({ error: 'Spark not found' }, { status: 404 })
+    updates = { ...fields, last_surfaced_at: Date.now(), surface_count: existing.surface_count + 1 }
+  }
+
+  const spark = await updateSpark(token, id, updates)
   if (!spark) return NextResponse.json({ error: 'Spark not found' }, { status: 404 })
 
   return NextResponse.json(spark)
