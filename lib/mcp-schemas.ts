@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
+import { SPARK_KINDS } from './types'
 
 /**
  * The validated shape of every MCP tool input.
@@ -56,13 +57,54 @@ const titleField = z
     'Short handle for the spark (≤80 chars is ideal), shown as the card heading in the dashboard. Supply one whenever content runs longer than a couple of sentences — it is what makes a long spark scannable in a list. Omit for one-line captures, which are their own title.'
   )
 
+const kindField = z
+  .enum(SPARK_KINDS)
+  .describe(
+    'What sort of idea it is: story (fiction), app-feature (something to build in one of the user\'s apps), research, reading (something to read), essay (nonfiction writing), other.'
+  )
+
+const homeField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .describe(
+    'Where the idea lives once it\'s acted on — a project, app, draft or notebook (e.g. "ControlledChaos", "Vertexism"). Reuse an existing home when one fits; kindling_list shows them.'
+  )
+
+const nextStepField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .describe('The one concrete move that would advance it, in a single line.')
+
 // ─── Per-tool schemas ────────────────────────────────────────────────────────
 
 export const toolSchemas = {
   kindle: z.object({
-    content: contentField.describe('The spark to capture.'),
-    title: titleField,
+    title: z
+      .string()
+      .trim()
+      .min(1, 'title is required')
+      .max(200)
+      .describe('Short handle for the idea (≤80 chars is ideal), shown as the card heading. Required.'),
+    kind: kindField,
+    content: contentField.describe(
+      'The idea itself, in markdown. Don\'t repeat the title as its first line.'
+    ),
+    home: homeField.optional(),
+    next_step: nextStepField.optional(),
     tags: tagList('Tags to categorize the spark.'),
+    from_loose_change: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe(
+        'The Loose Change entry id, when this spark is being promoted from a Loose Change capture. Recorded as its source. Afterwards, call lc_mark_promoted on that entry yourself — Kindling cannot reach Loose Change.'
+      ),
     allow_duplicate: z
       .boolean()
       .optional()
@@ -104,6 +146,13 @@ export const toolSchemas = {
       .min(1)
       .optional()
       .describe('Filter by a specific tag. Matching is case-insensitive.'),
+    kind: z.enum(SPARK_KINDS).optional().describe('Filter by kind.'),
+    home: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Filter by home. Case-insensitive exact match.'),
     promoted: z
       .boolean()
       .optional()
@@ -121,8 +170,15 @@ export const toolSchemas = {
   }),
 
   kindling_search: z.object({
-    query: z.string().trim().min(1).optional().describe('Text to search for in spark content.'),
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Text to search for in the title, content, home and next step.'),
     tags: tagList('Filter to sparks matching ANY of these tags.'),
+    kind: z.enum(SPARK_KINDS).optional().describe('Filter to one kind.'),
+    home: z.string().trim().min(1).optional().describe('Filter to one home (case-insensitive).'),
   }),
 
   kindling_get: z.object({
@@ -248,6 +304,9 @@ export const toolSchemas = {
     spark_id: sparkId.describe('ID of the spark to update.'),
     title: titleField.describe('New short handle for the spark (≤80 chars).'),
     content: contentField.optional().describe('New content for the spark.'),
+    kind: kindField.optional(),
+    home: homeField.nullable().optional().describe('New home; null clears it.'),
+    next_step: nextStepField.nullable().optional().describe('New next step; null clears it.'),
     tags: tagList('Tags to apply, subject to tag_mode.'),
     tag_mode: z
       .enum(['merge', 'replace'])

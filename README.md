@@ -188,6 +188,8 @@ https://your-deployment.example.com/{your-token}/mcp
 claude mcp add --transport http kindling https://your-deployment.example.com/{your-token}/mcp
 ```
 
+**Say which Claude is calling (optional).** Append an identity — `/{your-token}/mcp/coru` or `/{your-token}/mcp/cody` — and sparks that client captures record it as their `source` ("via Coru" on the card). The bare URL keeps working and records `claude`. Unknown identities return `404`, so a typo is loud rather than silently mislabelling captures.
+
 Once connected, the twenty `kindle` / `kindling_*` tools become available. The dashboard's **Copy MCP URL** button builds the correct URL for whatever origin you're on, so use that rather than assembling it by hand.
 
 ---
@@ -206,13 +208,19 @@ Sparks are rendered in responses with a consistent one-line format:
 
 ### `kindle`
 
-Capture a spark — an idea, an aside, a half-formed thought — so it isn't lost when the conversation moves on. The description shipped to clients asks the model to fire this **proactively** on idea-shaped asides rather than waiting to be told to save something; that framing is the whole difference between Kindling and a notes app.
+Keep a **curated** idea — one worth planning and coming back to. Raw, passing thoughts belong in Loose Change; Kindling is the step after, once the user has decided an idea is worth shaping. The description shipped to clients tells the model **not** to fire on its own when something merely sounds idea-shaped: capture when the user wants the idea kept, and when unsure, suggest it instead.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `content` | string | Yes | The spark to capture (trimmed; 1–100,000 chars) |
-| `title` | string | No | Short handle shown as the card heading. Supply one for anything longer than a couple of sentences; derived from the first line when omitted |
+| `title` | string | Yes | Short handle shown as the card heading (1–200 chars) |
+| `kind` | `story` \| `app-feature` \| `research` \| `reading` \| `essay` \| `other` | Yes | What sort of idea it is |
+| `content` | string | Yes | The idea, in markdown (trimmed; 1–100,000 chars). Shouldn't repeat the title |
+| `home` | string | No | Where it will live — a project, app, draft (≤120 chars) |
+| `next_step` | string | No | The one concrete move that would advance it (≤300 chars) |
 | `tags` | string[] | No | Tags to categorize the spark (defaults to `[]`) |
+| `from_loose_change` | string | No | Loose Change entry id when promoting from there. Recorded as `source: loose-change`; the caller then marks the entry promoted with `lc_mark_promoted` |
+
+`source` is set server-side from the URL identity (`coru`, `cody`, else `claude`), or `loose-change` when `from_loose_change` is given.
 
 Creates the spark with status `active`, `surface_count` of 0, and no surfacing history. Also runs a decay pass first, so capturing something is an opportunity for the store to notice what's gone stale.
 
@@ -401,12 +409,14 @@ Inspect one spark in full — whole content, every timestamp, and promotion prov
 
 ### `kindling_list`
 
-List sparks, optionally filtered by status and/or tag.
+List sparks, optionally filtered by status, tag, kind and/or home.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `status` | `"active"` \| `"cold"` \| `"archived"` | No | Filter by status (omit for all) |
 | `tag` | string | No | Filter to sparks carrying this exact tag |
+| `kind` | kind enum | No | Filter to one kind |
+| `home` | string | No | Filter to one home (case-insensitive exact match) |
 | `limit` | number | No | Max sparks to return |
 
 Returns one page at a time with a running `Showing N–M of T` header; pass `offset` to continue through a large store. `limit` defaults to `25` and is clamped there.
@@ -419,14 +429,16 @@ Unlike `kindling_recall`, listing is **passive** — it does not mark anything a
 
 ### `kindling_search`
 
-Search sparks by content and/or tags. At least one of `query` or `tags` is required.
+Search sparks by text and/or filters. At least one of `query`, `tags`, `kind` or `home` is required.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `query` | string | No\* | Case-insensitive substring match against spark content |
+| `query` | string | No\* | Case-insensitive substring match against title, content, home and next step |
 | `tags` | string[] | No\* | Match sparks carrying **any** of these tags |
+| `kind` | kind enum | No\* | Only this kind |
+| `home` | string | No\* | Only this home (case-insensitive) |
 
-\* At least one must be provided, or the tool returns `Provide at least one of: query, tags.`
+\* At least one must be provided, or the tool returns `Provide at least one of: query, tags, kind, home.`
 
 Searches across **all** statuses, including archived and cold. When both `query` and `tags` are given, they're combined with AND — content must match *and* at least one tag must match.
 
@@ -464,15 +476,21 @@ The triage ritual for the cold pile. Returns cold sparks **without** marking the
 
 ### `kindling_update`
 
-Edit the content and/or tags of an existing spark.
+Edit an existing spark.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `spark_id` | string | Yes | ID of the spark to update |
+| `title` | string | No\* | New title |
 | `content` | string | No\* | New content (replaces existing) |
-| `tags` | string[] | No\* | New tags — **replaces** the existing array, it does not merge |
+| `tags` | string[] | No\* | Tags, merged into the existing ones unless `tag_mode` is `replace` |
+| `tag_mode` | `merge` \| `replace` | No | Default `merge` |
+| `remove_tags` | string[] | No\* | Tags to drop |
+| `kind` | kind enum | No\* | New kind |
+| `home` | string \| null | No\* | New home; `null` clears it |
+| `next_step` | string \| null | No\* | New next step; `null` clears it |
 
-\* At least one must be provided, or the tool returns `Provide at least one of: content, tags.`
+\* At least one must be provided.
 
 Timestamps, surface count, and status are untouched — this is a pure edit, not an interaction.
 
@@ -564,6 +582,14 @@ interface Spark {
   promoted_notes: string | null     // provenance notes, if provided
   status: SparkStatus
   cold_at: number | null            // epoch ms when decay moved it to cold
+  snooze_until: number | null       // held out of recall/decay until then
+  standing: boolean                 // never decays
+  // Structured fields — optional in storage; older sparks lack them
+  kind?: SparkKind | null           // story | app-feature | research | reading | essay | other
+  home?: string | null              // where the idea lives once acted on
+  next_step?: string | null         // one concrete next move
+  source?: SparkSource | null       // web | coru | cody | claude | loose-change
+  source_ref?: string | null        // Loose Change entry id when source is loose-change
 }
 ```
 
@@ -652,7 +678,7 @@ All return `401` when not signed in. Labels are 1–40 characters; an account ho
 
 ## MCP Protocol Details
 
-The MCP server at `app/[token]/mcp/route.ts` is a hand-written JSON-RPC 2.0 implementation — no MCP SDK dependency.
+The MCP server in `lib/mcp-server.ts` (served by `app/[token]/mcp/route.ts` and its `[identity]` sibling) is a hand-written JSON-RPC 2.0 implementation — no MCP SDK dependency.
 
 - **Transport:** HTTP POST only. There's no SSE stream and no `GET` handler — each request is self-contained and stateless.
 - **Protocol version:** negotiated — `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` (latest offered when the client asks for something unsupported)
@@ -745,7 +771,8 @@ No cron job or background worker is needed. Decay is lazy and runs on use.
 ```
 kindling/
 ├── app/
-│   ├── [token]/mcp/route.ts   # MCP server — JSON-RPC, tool schemas, handlers
+│   ├── [token]/mcp/route.ts   # MCP endpoint (bare URL → source "claude")
+│   ├── [token]/mcp/[identity]/route.ts  # same endpoint, /coru or /cody identity
 │   ├── api/sparks/route.ts    # REST API backing the dashboard
 │   ├── page.tsx               # Token gate + dashboard (client component)
 │   ├── layout.tsx             # Root layout and metadata
@@ -753,6 +780,7 @@ kindling/
 ├── branding/fonts/            # Raela Grotesque + Kineks Round (local fonts)
 ├── lib/
 │   ├── sparks.ts              # CRUD, recall scoring, decay — the core logic
+│   ├── mcp-server.ts          # MCP server — JSON-RPC, tool descriptions, handlers
 │   ├── redis.ts               # Upstash client + key helpers
 │   └── types.ts               # Spark and SparkStatus
 ├── .env.example
