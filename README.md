@@ -658,7 +658,7 @@ One endpoint, discriminated by `action`. Takes no token — this is the account 
 | `me` | — | `{ account }` or `{ account: null }` |
 | `signup` | `email`, `password` | `{ account }` and a session cookie |
 | `login` | `email`, `password` | `{ account }` and a session cookie |
-| `logout` | — | `{ account: null }` and a cleared cookie |
+| `logout` | `token` (optional — the browser's own saved token) | `{ account: null, forgetToken }` and a cleared cookie. `forgetToken` is `true` only when the account owns that token, so the browser can drop it safely |
 
 The returned account is always the public projection — `email`, `token`, `createdAt`. The password hash and salt never leave the server.
 

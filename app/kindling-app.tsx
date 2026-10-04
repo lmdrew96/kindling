@@ -2082,11 +2082,6 @@ export function KindlingApp({
 
   const adopt = (t: string) => setToken(t)
 
-  /**
-   * Signing in or out repoints this browser at the account's token. The
-   * localStorage copy is deliberately never rewritten, so a token that lives
-   * only in this browser cannot be lost by using an account.
-   */
   /** Moves this browser into one of the account's namespaces. */
   const switchToken = (t: string) => {
     writeTokenCookie(t)
@@ -2103,6 +2098,9 @@ export function KindlingApp({
       return
     }
     // Signed out. Fall back to whatever this browser remembers on its own.
+    // Sign-out has already dropped that copy if the account owns it, so what
+    // survives is a token that lives only here — losing it would lose it.
+    // Signing in never rewrites it, for the same reason.
     let saved: string | null = null
     try {
       saved = localStorage.getItem('kindling:token')

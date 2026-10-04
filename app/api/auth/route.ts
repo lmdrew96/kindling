@@ -12,6 +12,7 @@ import {
   hashPassword,
   normalizeEmail,
   isRateLimited,
+  ownsToken,
   publicAccount,
   putAccount,
   readCookie,
@@ -55,8 +56,19 @@ export async function POST(req: Request) {
   }
 
   if (action === 'logout') {
+    // The browser sends the token it keeps on its own (localStorage). It is
+    // only safe to forget if the account owns it — logging back in recovers
+    // it. An unowned token exists nowhere else, so it stays. Checked here
+    // against the live record rather than the client's copy, which can be
+    // stale if a token was unlinked from another device.
+    const account = await requireAccount(req)
+    const kept = parseKindlingToken(String(body.token ?? ''))
+    const forgetToken = Boolean(account && kept && ownsToken(account, kept))
     await destroySession(readCookie(req, SESSION_COOKIE))
-    return json({ account: null }, { headers: { 'Set-Cookie': clearedCookie() } })
+    return json(
+      { account: null, forgetToken },
+      { headers: { 'Set-Cookie': clearedCookie() } }
+    )
   }
 
   // ── Credentialed actions ──────────────────────────────────────────────────

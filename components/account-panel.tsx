@@ -219,6 +219,7 @@ function SignedIn({
   const [linkInput, setLinkInput] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [error, setError] = useState('')
+  const [signOutError, setSignOutError] = useState('')
   const [busy, setBusy] = useState(false)
 
   /** One wrapper so every token action reports errors the same way. */
@@ -254,11 +255,40 @@ function SignedIn({
     if (ok) setNewLabel('')
   }
 
+  /**
+   * Signing out has to actually hide the account's sparks. Signup adopts this
+   * browser's own token, so the old fallback (return to whatever localStorage
+   * holds) dropped a signed-out browser straight back into the account.
+   *
+   * The server decides whether that token is the account's — and so safe to
+   * forget — because a token the account doesn't own has no other copy.
+   * A failed request is reported rather than papered over: the session
+   * cookie is httpOnly, so clearing local state alone would only look
+   * signed out until the next reload.
+   */
   const logout = async () => {
+    setSignOutError('')
+    let saved: string | null = null
     try {
-      await api('/api/auth', { action: 'logout' })
-    } finally {
+      saved = localStorage.getItem('kindling:token')
+    } catch {
+      /* private mode */
+    }
+    try {
+      const { forgetToken } = await api<{ forgetToken: boolean }>('/api/auth', {
+        action: 'logout',
+        token: saved,
+      })
+      if (forgetToken) {
+        try {
+          localStorage.removeItem('kindling:token')
+        } catch {
+          /* private mode */
+        }
+      }
       onAccount(null)
+    } catch (e) {
+      setSignOutError(e instanceof Error ? e.message : 'Something went wrong.')
     }
   }
 
@@ -344,7 +374,7 @@ function SignedIn({
         )}
       </div>
 
-      <div className="border-t border-border pt-3">
+      <div className="border-t border-border pt-3 space-y-2">
         <button
           type="button"
           onClick={() => void logout()}
@@ -352,6 +382,15 @@ function SignedIn({
         >
           Sign out
         </button>
+        <p className="text-xs text-fg-subtle">
+          Signing out takes your account&rsquo;s tokens off this browser. Log in again to get
+          them back.
+        </p>
+        {signOutError && (
+          <p className="text-xs text-danger" role="alert">
+            {signOutError}
+          </p>
+        )}
       </div>
     </div>
   )
