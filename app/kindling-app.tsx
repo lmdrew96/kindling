@@ -776,6 +776,22 @@ function Dashboard({
     }
   }, [])
 
+  // The tab title follows the view, so a row of browser tabs says where each
+  // one is. Restored on unmount, which is the token gate.
+  useEffect(() => {
+    const labels: Record<View, string> = {
+      sparks: 'Sparks',
+      stats: 'Stats',
+      connect: 'Connect',
+      help: 'Help',
+      account: 'Account',
+    }
+    document.title = `${labels[view]} · Kindling`
+    return () => {
+      document.title = 'Kindling'
+    }
+  }, [view])
+
   useEffect(() => {
     fetchPrefs(token)
       .then((p) => setDecayDays(p.decayThresholdDays))
@@ -1239,7 +1255,7 @@ function Dashboard({
       archived: 'Archived',
       promoted: 'Promoted',
     }
-    return `${labels[t]} ${counts[t] > 0 ? `(${counts[t]})` : ''}`
+    return labels[t]
   }
 
   return (
@@ -1653,7 +1669,11 @@ function Dashboard({
 
         {/* Tabs + sort */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div role="tablist" aria-label="Spark status" className="flex gap-1">
+          <div
+            role="tablist"
+            aria-label="Spark status"
+            className="flex flex-1 sm:flex-none rounded-lg border border-border bg-surface p-1"
+          >
             {TABS.map((t, i) => (
               <button
                 key={t}
@@ -1667,13 +1687,14 @@ function Dashboard({
                 ref={(el) => { tabRefs.current[t] = el }}
                 onClick={() => setTab(t)}
                 onKeyDown={(e) => onTabKeyDown(e, i)}
-                className={`text-xs px-3 min-h-11 rounded-lg cursor-pointer border transition-colors ${
+                className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 text-xs px-3 min-h-9 pointer-coarse:min-h-11 rounded-md cursor-pointer transition-colors ${
                   tab === t
-                    ? 'bg-primary/15 text-primary border-primary/40 font-semibold underline underline-offset-4'
-                    : 'bg-transparent text-fg-subtle border-transparent hover:text-fg-muted'
+                    ? 'bg-surface-hover text-fg font-semibold shadow-sm'
+                    : 'text-fg-muted hover:text-fg'
                 }`}
               >
                 {tabLabel(t)}
+                <span className="font-mono text-[0.6875rem] text-fg-subtle">{counts[t]}</span>
               </button>
             ))}
           </div>
