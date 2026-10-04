@@ -92,27 +92,15 @@ body {
 /* The heat rail is decorative reinforcement — a spark's age text and its
    status tab already carry the same fact. At raised contrast the interpolated
    middle of the ramp is the first thing to become ambiguous, so collapse it to
-   the two audited endpoints and drop the bloom entirely. */
+   the two audited endpoints plus a neutral middle. The rail colour is inline
+   style, so overriding it needs !important. */
 @media (prefers-contrast: more) {
-  /* The wash is inline style, so overriding it needs !important. Dropping it
-     returns the card to the background its text tokens were audited against,
-     which is the whole point of raised contrast — otherwise the rail snaps to
-     a solid endpoint while the tint it was tuned against stays put. */
-  [data-heat] {
-    box-shadow: none !important;
-    background-color: var(--color-surface-raised) !important;
-  }
-
-  [data-heat='cold'] {
-    background-color: var(--color-surface) !important;
-  }
-
   [data-heat='warm'] {
-    border-left-color: var(--color-primary) !important;
+    border-left-color: var(--color-hot) !important;
   }
 
   [data-heat='cooling'] {
-    border-left-color: var(--color-border-strong) !important;
+    border-left-color: var(--color-fg-subtle) !important;
   }
 
   [data-heat='cold'] {

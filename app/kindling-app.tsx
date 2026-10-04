@@ -1,19 +1,17 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
-import type { CSSProperties } from 'react'
 import type { Spark, SparkStatus } from '@/lib/types'
 import {
   DECAY_THRESHOLD_DAYS,
   absoluteDate,
-  contentExtent,
   displayTitle,
-  isLongContent,
   fuzzyMatches,
   isPromoted,
   isSnoozed,
   isStanding,
   normalizeTags,
+  previewText,
   relativeAge,
   scoreSpark,
   sparkHeat,
@@ -69,6 +67,9 @@ async function batchArchiveApi(token: string, ids: string[]): Promise<string[]> 
   if (!res.ok) throw new Error('Failed to archive selection')
   return (await res.json()).archived as string[]
 }
+
+/** More than this and the chips start to outweigh the idea. */
+const MAX_CARD_TAGS = 4
 
 const SNOOZE_CHOICES: Array<{ label: string; days: number }> = [
   { label: '1 week', days: 7 },
@@ -218,81 +219,48 @@ function SparkCard({
   const snoozed = isSnoozed(spark)
   const standing = isStanding(spark)
   const [snoozeOpen, setSnoozeOpen] = useState(false)
-  const tags = spark.tags ?? []
-  const long = isLongContent(spark.content)
   const [expanded, setExpanded] = useState(false)
+  const tags = spark.tags ?? []
+  const shownTags = tags.slice(0, MAX_CARD_TAGS)
+  const hiddenTags = tags.length - shownTags.length
+  const preview = previewText(spark)
   const bodyId = `spark-body-${spark.id}`
 
-  // A spark's temperature, rendered as a left rail that runs marigold when it
-  // was touched recently and aqua as it drifts toward cold. Null means the
-  // spark is off the decay clock entirely, and the old status styling stands.
-  // `now` is left to default inside the helper rather than read here, the same
-  // way isSnoozed and relativeAge already do it on this card — sparks only ever
-  // render after a client fetch, so there is no server render to disagree with.
+  // The left rail is the spark's temperature: hot when it was touched
+  // recently, slate as it drifts toward cold. sparkHeat is the neglect term
+  // inverted — NOT scoreSpark, which runs high for the stalest sparks. Null
+  // means the spark is off the decay clock and the rail stays neutral.
+  // `now` defaults inside the helper; sparks only render after a client fetch,
+  // so there is no server render to disagree with.
   const trueHeat = sparkHeat(spark, undefined, decayDays)
   // Paint along the emphasis curve, not the raw value — see heatEmphasis.
   const heat = trueHeat === null ? null : heatEmphasis(trueHeat)
-  const heatColor =
+  const railColor =
     heat === null
-      ? null
-      : `color-mix(in oklch, var(--color-primary) ${Math.round(heat * 100)}%, var(--color-cold))`
+      ? promoted
+        ? 'color-mix(in srgb, var(--color-primary) 50%, transparent)'
+        : 'var(--color-border-strong)'
+      : `color-mix(in oklch, var(--color-hot) ${Math.round(heat * 100)}%, var(--color-cold))`
 
-  // Heat drives PRESENCE, not just colour. A fresh spark gets room, scale and a
-  // warm wash; a cooling one compacts toward a single dense line and sinks to
-  // the page colour. The list becomes a landscape with a horizon rather than a
-  // uniform stack — which is the part a 3px edge could never do on its own.
-  const hot = heat !== null && heat >= 0.66
-  const chilly = heat !== null && heat < 0.33
+  // Same cuts the prefers-contrast override in globals.css expects.
+  const heatBucket =
+    heat === null ? undefined : heat >= 0.66 ? 'warm' : heat < 0.33 ? 'cold' : 'cooling'
 
-  const heatStyle: CSSProperties | undefined = heatColor
-    ? {
-        // The other three sides only lean toward the rail, so the card still
-        // reads as one object rather than a stripe glued to a box.
-        borderColor: `color-mix(in oklch, ${heatColor} 28%, var(--color-border))`,
-        borderLeftColor: heatColor,
-        borderLeftWidth: hot ? '5px' : '3px',
-        // The whole card carries the temperature, not only its edge.
-        backgroundColor: chilly
-          ? 'var(--color-surface)'
-          : `color-mix(in oklch, ${heatColor} ${hot ? 9 : 4}%, var(--color-surface-raised))`,
-        ...(hot
-          ? {
-              boxShadow:
-                '-10px 0 28px -12px color-mix(in srgb, var(--color-primary) 26%, transparent)',
-            }
-          : {}),
-      }
-    : undefined
-
-  // Must use the same cuts as `hot`/`chilly` above: these buckets drive the
-  // prefers-contrast override, and two partitions meant it addressed cards it
-  // was never tuned against.
-  const heatBucket = heat === null ? undefined : hot ? 'warm' : chilly ? 'cold' : 'cooling'
+  const action = `text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-md transition-colors cursor-pointer`
+  const ghost = `${action} text-fg-muted hover:bg-surface-hover hover:text-fg`
 
   return (
     <div
       data-heat={heatBucket}
-      style={heatStyle}
-      className={`group/card relative rounded-xl border flex flex-col transition-colors duration-[400ms] motion-reduce:transition-none ${
-        hot ? 'p-5 gap-3.5' : chilly ? 'px-4 py-3 gap-2' : 'p-4 gap-3'
-      } ${
-        heat !== null
-          ? chilly
-            ? 'bg-surface'
-            : 'bg-surface-raised'
-          : isCold
-            ? 'bg-surface-raised border-cold/40'
-            : promoted
-              ? 'bg-surface-raised border-primary/40'
-              : 'bg-surface-raised border-border'
-      }`}
+      style={{ borderLeftColor: railColor }}
+      className="group/card relative flex flex-col gap-1.5 rounded-xl border border-l-[3px] border-border bg-surface-raised px-4 py-3"
     >
       {/* Selection is a mode you enter, not a permanent fixture on every card.
           It stays reachable by keyboard and always visible once checked or on
           touch, where there is no hover to reveal it. */}
       {onToggleSelected && (
         <label
-          className={`absolute -left-2.5 -top-2.5 z-10 flex items-center rounded-lg border border-border-strong bg-surface-raised p-1.5 shadow-md text-xs text-fg-subtle cursor-pointer transition-opacity motion-reduce:transition-none pointer-coarse:opacity-100 group-hover/card:opacity-100 group-focus-within/card:opacity-100 ${
+          className={`absolute -left-2.5 -top-2.5 z-10 flex items-center rounded-lg border border-border-strong bg-surface-hover p-1.5 shadow-md text-xs text-fg-subtle cursor-pointer transition-opacity motion-reduce:transition-none pointer-coarse:opacity-100 group-hover/card:opacity-100 group-focus-within/card:opacity-100 ${
             selected ? 'opacity-100' : 'opacity-0'
           }`}
         >
@@ -306,262 +274,186 @@ function SparkCard({
         </label>
       )}
 
-      {/* Content. Long sparks collapse behind their title so a list of them
-          stays scannable; short ones are their own title and render whole. */}
-      {long ? (
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            aria-expanded={expanded}
-            aria-controls={bodyId}
-            className="group flex items-start gap-2 text-left cursor-pointer"
-          >
-            <span
-              aria-hidden="true"
-              className={`mt-0.5 text-xs text-fg-subtle transition-transform ${expanded ? 'rotate-90' : ''}`}
-            >
-              ▶
-            </span>
-            <span
-              className={`flex-1 font-semibold tracking-normal leading-snug transition-colors group-hover:text-primary ${
-                hot ? 'text-lg text-fg' : chilly ? 'text-sm text-fg-muted' : 'text-base text-fg'
-              }`}
-            >
-              {displayTitle(spark)}
-            </span>
-          </button>
-
-          {expanded ? (
-            <div id={bodyId} className="pl-5">
-              <Markdown className={chilly ? 'text-sm text-fg-muted' : 'text-[0.9375rem] text-fg'}>
-                {spark.content}
-              </Markdown>
-            </div>
-          ) : (
-            // Same rung-step as the metadata row: fg-subtle was audited
-            // against the untinted card, and the heat wash lightens the
-            // background out from under it.
-            <p
-              id={bodyId}
-              className={`pl-5 text-xs ${
-                heat !== null && !chilly ? 'text-fg-muted' : 'text-fg-subtle'
-              }`}
-            >
-              {contentExtent(spark.content)} — click to expand
-            </p>
-          )}
-        </div>
-      ) : (
-        // The idea is the whole point of the card and used to be its quietest
-        // element — smaller than the buttons sitting under it. The scale goes
-        // to Markdown directly: it sets its own font-size and colour, so a
-        // wrapper around it would have no effect on the text.
-        <Markdown
-          className={
-            hot
-              ? 'text-base text-fg'
-              : chilly
-                ? 'text-sm text-fg-muted'
-                : 'text-[0.9375rem] text-fg'
-          }
+      {/* Title is the expand control. Collapsed, the card shows a plain-text
+          glimpse; expanded, the full body renders as markdown inline. */}
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        className="group flex items-start gap-2 text-left cursor-pointer"
+      >
+        <span
+          aria-hidden="true"
+          className={`mt-1 text-[0.625rem] text-fg-subtle transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`}
         >
-          {spark.content}
-        </Markdown>
-      )}
+          ▶
+        </span>
+        <span className="flex-1 text-[0.9375rem] font-semibold leading-snug text-fg transition-colors group-hover:text-primary">
+          {displayTitle(spark)}
+        </span>
+      </button>
 
-      {/* Tags */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {tags.map((tag) => (
-            <span
-              key={tag}
-              className="text-xs px-2 py-0.5 rounded-full bg-tag-bg text-tag-fg border border-cold/60"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
+      <div id={bodyId} className="pl-[1.125rem]">
+        {expanded ? (
+          <Markdown className="text-[0.9375rem] text-fg">{spark.content}</Markdown>
+        ) : (
+          preview && <p className="line-clamp-2 text-sm leading-relaxed text-fg-muted">{preview}</p>
+        )}
+      </div>
 
-      {/* Promotion record. The whole point of the system, and until now it was
-          written to Redis and never read back anywhere. */}
+      {/* Promotion record. The whole point of the system. */}
       {promoted && (
-        <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs">
-          <p className="text-fg">
-            <span aria-hidden="true">✦</span> Became{' '}
-            <strong className="font-semibold text-primary">{spark.promoted_to}</strong>
-            {spark.promoted_at && (
-              <span className="text-fg-muted"> · {relativeAge(spark.promoted_at)}</span>
-            )}
-          </p>
-          {spark.promoted_notes && (
-            <p className="mt-1 text-fg-muted italic">{spark.promoted_notes}</p>
-          )}
-        </div>
+        <p className="pl-[1.125rem] text-xs text-fg-muted">
+          <span aria-hidden="true" className="text-primary">✦</span> Became{' '}
+          <strong className="font-semibold text-primary">{spark.promoted_to}</strong>
+          {spark.promoted_at && <> · {relativeAge(spark.promoted_at)}</>}
+          {spark.promoted_notes && <span className="italic"> — {spark.promoted_notes}</span>}
+        </p>
       )}
 
-      {/* Footer */}
-      <div className="flex items-center justify-between gap-2 pt-1">
-        {/* fg-subtle was audited at 4.80 against the untinted card ("do not go
-            dimmer", per globals.css). The heat wash lightens that background,
-            which pushes the same token under AA — so washed cards step the
-            metadata up a rung rather than quietly failing. */}
-        <div
-          className={`flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.6875rem] ${
-            heat !== null && !chilly ? 'text-fg-muted' : 'text-fg-subtle'
-          }`}
-        >
+      {/* Footer: quiet chips, then the machine-voice metadata. One row, so a
+          collapsed card stays near 100px tall. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-[1.125rem] sm:pr-2">
+        {tags.length > 0 && (
+          <ul className="flex flex-wrap gap-1" aria-label="Tags">
+            {shownTags.map((tag) => (
+              <li
+                key={tag}
+                className="rounded-md bg-tag-bg px-1.5 py-0.5 text-[0.6875rem] leading-none text-tag-fg"
+              >
+                {tag}
+              </li>
+            ))}
+            {hiddenTags > 0 && (
+              <li
+                title={tags.slice(MAX_CARD_TAGS).join(', ')}
+                className="px-1 py-0.5 font-mono text-[0.6875rem] leading-none text-fg-subtle"
+              >
+                +{hiddenTags}
+              </li>
+            )}
+          </ul>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[0.6875rem] text-fg-subtle">
           <span title={absoluteDate(spark.created_at)}>
-            Captured {relativeAge(spark.created_at)}
+            captured {relativeAge(spark.created_at)}
           </span>
           {spark.surface_count > 0 && (
             <span
-              title={
-                spark.last_surfaced_at ? absoluteDate(spark.last_surfaced_at) : undefined
-              }
+              title={spark.last_surfaced_at ? absoluteDate(spark.last_surfaced_at) : undefined}
             >
-              Surfaced {spark.surface_count}×
+              · surfaced {spark.surface_count}×
               {spark.last_surfaced_at && `, last ${relativeAge(spark.last_surfaced_at)}`}
             </span>
           )}
           {isCold && (
-            <span className="flex items-center gap-1 text-cold-text">
-              <span aria-hidden="true">❄</span> Gone cold
+            <span className="text-cold-text">
+              · <span aria-hidden="true">❄</span> cold
             </span>
           )}
           {standing && (
-            <span className="flex items-center gap-1 text-primary">
-              <span aria-hidden="true">📌</span> Standing
+            <span className="text-primary">
+              · <span aria-hidden="true">📌</span> standing
             </span>
           )}
           {snoozed && spark.snooze_until && (
-            <span className="flex items-center gap-1 text-fg-muted">
-              <span aria-hidden="true">💤</span> Snoozed until{' '}
+            <span className="text-fg-muted">
+              · <span aria-hidden="true">💤</span> until{' '}
               {new Date(spark.snooze_until).toLocaleDateString()}
             </span>
           )}
           {showStatus && !isCold && (
-            <span className="rounded-full border border-border px-2 py-0.5 text-fg-muted">
-              {promoted ? 'Promoted' : spark.status === 'archived' ? 'Archived' : 'Active'}
+            <span className="rounded border border-border-strong px-1.5 text-fg-muted">
+              {promoted ? 'promoted' : spark.status === 'archived' ? 'archived' : 'active'}
             </span>
           )}
         </div>
+      </div>
 
-        {/* These were the loudest thing on every card: six buttons carrying more
-            weight and area than the idea they act on. They now surface on hover
-            or keyboard focus and float clear of the flow, which is what lets a
-            card collapse to the height of its content. Small screens and touch
-            keep them in view, since there is no hover to reveal them there. */}
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface-raised sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
-          {isCold && onRevive && (
+      {/* Quick actions surface on hover or keyboard focus and float clear of
+          the flow, so they never add height. Touch and small screens keep
+          them in view, since there is no hover to reveal them. */}
+      <div className="flex flex-wrap items-center gap-1 pl-[1.125rem] sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:pl-1 sm:rounded-lg sm:border sm:border-border-strong sm:bg-surface-hover sm:p-1 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
+        {isCold && onRevive && (
+          <button type="button" onClick={onRevive} className={`${action} text-cold-text hover:bg-cold/20`}>
+            Revive
+          </button>
+        )}
+        {onUnarchive && (
+          <button type="button" onClick={onUnarchive} className={ghost}>
+            Unarchive
+          </button>
+        )}
+        {onPromote && (
+          <button
+            type="button"
+            onClick={onPromote}
+            title="Record that this became something real"
+            className={`${action} text-primary hover:bg-primary/10`}
+          >
+            Promote
+          </button>
+        )}
+        {snoozed && onUnsnooze && (
+          <button type="button" onClick={onUnsnooze} className={ghost}>
+            Wake
+          </button>
+        )}
+        {!snoozed && onSnooze && (
+          <div className="relative">
             <button
               type="button"
-              onClick={onRevive}
-              className="text-xs px-3 min-h-11 rounded-lg bg-cold/15 text-cold-text border border-cold/40 hover:bg-cold/25 transition-colors cursor-pointer"
+              onClick={() => setSnoozeOpen((v) => !v)}
+              aria-expanded={snoozeOpen}
+              className={ghost}
             >
-              Revive
+              Snooze
             </button>
-          )}
-          {onUnarchive && (
-            <button
-              type="button"
-              onClick={onUnarchive}
-              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
-            >
-              Unarchive
-            </button>
-          )}
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
-            >
-              Edit
-            </button>
-          )}
-          {onPromote && (
-            <button
-              type="button"
-              onClick={onPromote}
-              title="Record that this became something real"
-              // The 10% fill lightened its own backdrop enough to put marigold
-              // text at 4.48 — just under AA. 5% keeps the accent and clears it.
-              className="text-xs px-3 min-h-11 rounded-lg border border-primary/40 bg-primary/5 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-            >
-              Promote
-            </button>
-          )}
-          {onToggleStanding && (
-            <button
-              type="button"
-              onClick={onToggleStanding}
-              aria-pressed={standing}
-              title={standing ? 'Put back on the decay clock' : 'Never let this go cold'}
-              className={`text-xs px-3 min-h-11 rounded-lg border transition-colors cursor-pointer ${
-                standing
-                  ? 'border-primary/40 bg-primary/15 text-primary'
-                  : 'border-border bg-surface text-fg-muted hover:text-fg'
-              }`}
-            >
-              📌
-            </button>
-          )}
-          {snoozed && onUnsnooze && (
-            <button
-              type="button"
-              onClick={onUnsnooze}
-              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
-            >
-              Wake
-            </button>
-          )}
-          {!snoozed && onSnooze && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setSnoozeOpen((v) => !v)}
-                aria-expanded={snoozeOpen}
-                className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
-              >
-                Snooze
-              </button>
-              {snoozeOpen && (
-                <div className="absolute right-0 bottom-full z-10 mb-1 flex flex-col rounded-lg border border-border-strong bg-surface-raised p-1">
-                  {SNOOZE_CHOICES.map((c) => (
-                    <button
-                      key={c.days}
-                      type="button"
-                      onClick={() => { setSnoozeOpen(false); onSnooze(c.days) }}
-                      className="whitespace-nowrap rounded px-3 py-2 text-left text-xs text-fg-muted hover:bg-surface hover:text-fg cursor-pointer"
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="text-xs px-3 min-h-11 rounded-lg border border-danger/40 text-danger hover:bg-danger/10 transition-colors cursor-pointer"
-            >
-              Delete
-            </button>
-          )}
-          {onArchive && (
-            <button
-              type="button"
-              onClick={onArchive}
-              className={`text-xs px-3 min-h-11 ${BTN_GHOST}`}
-            >
-              Archive
-            </button>
-          )}
-        </div>
+            {snoozeOpen && (
+              <div className="absolute right-0 bottom-full z-20 mb-1 flex flex-col rounded-lg border border-border-strong bg-surface-hover p-1 shadow-lg">
+                {SNOOZE_CHOICES.map((c) => (
+                  <button
+                    key={c.days}
+                    type="button"
+                    onClick={() => { setSnoozeOpen(false); onSnooze(c.days) }}
+                    className="whitespace-nowrap rounded px-3 py-2 text-left text-xs text-fg-muted hover:bg-surface-raised hover:text-fg cursor-pointer"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {onArchive && (
+          <button type="button" onClick={onArchive} className={ghost}>
+            Archive
+          </button>
+        )}
+        {onEdit && (
+          <button type="button" onClick={onEdit} className={ghost}>
+            Edit
+          </button>
+        )}
+        {onToggleStanding && (
+          <button
+            type="button"
+            onClick={onToggleStanding}
+            aria-pressed={standing}
+            aria-label={standing ? 'Put back on the decay clock' : 'Never let this go cold'}
+            title={standing ? 'Put back on the decay clock' : 'Never let this go cold'}
+            className={`${action} ${standing ? 'bg-primary/15 text-primary' : 'text-fg-muted hover:bg-surface-hover hover:text-fg'}`}
+          >
+            📌
+          </button>
+        )}
+        {onDelete && (
+          <button type="button" onClick={onDelete} className={`${action} text-danger hover:bg-danger/10`}>
+            Delete
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1645,7 +1537,7 @@ function Dashboard({
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={searching} />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filtered.map((spark) => (
               <SparkCard
                 key={spark.id}

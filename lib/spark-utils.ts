@@ -87,6 +87,36 @@ export const contentExtent = (content: string): string => {
   return `${words} words`
 }
 
+/**
+ * A plain-text glimpse of what a card holds beyond its title, for the
+ * collapsed two-line preview. Markdown syntax is stripped rather than
+ * rendered — a clamp cuts rendered blocks mid-element, and the full body
+ * is one click away. Empty when the title already says everything.
+ */
+export const previewText = (spark: Spark): string => {
+  const lines = spark.content.split('\n').map((l) => l.trim()).filter(Boolean)
+  // A derived title IS the first line, so the preview starts after it —
+  // unless the title had to truncate that line, in which case the preview
+  // carries the whole line so the cut-off part is still readable.
+  const keepFirst = Boolean(spark.title?.trim()) || displayTitle(spark).endsWith('…')
+  const body = keepFirst ? lines : lines.slice(1)
+  return body
+    .map((l) =>
+      l
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
+        .replace(/^\d+[.)]\s+/, '')
+        .replace(/^>\s?/, '')
+        .replace(/^\|?[-:| ]+\|?$/, '') // table divider rows
+    )
+    .join(' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // links and images → their text
+    .replace(/(\*\*|__|\*|_|~~|`)/g, '')
+    .replace(/\|/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 // ─── Time ────────────────────────────────────────────────────────────────────
 
 /** Relative-first, because time blindness makes absolute dates hard to read. */
