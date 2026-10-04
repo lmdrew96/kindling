@@ -252,8 +252,8 @@ function SparkCard({
         borderLeftWidth: hot ? '5px' : '3px',
         // The whole card carries the temperature, not only its edge.
         backgroundColor: chilly
-          ? 'var(--color-bg)'
-          : `color-mix(in oklch, ${heatColor} ${hot ? 9 : 4}%, var(--color-surface))`,
+          ? 'var(--color-surface)'
+          : `color-mix(in oklch, ${heatColor} ${hot ? 9 : 4}%, var(--color-surface-raised))`,
         ...(hot
           ? {
               boxShadow:
@@ -277,13 +277,13 @@ function SparkCard({
       } ${
         heat !== null
           ? chilly
-            ? 'bg-bg'
-            : 'bg-surface'
+            ? 'bg-surface'
+            : 'bg-surface-raised'
           : isCold
-            ? 'bg-surface border-cold/40'
+            ? 'bg-surface-raised border-cold/40'
             : promoted
-              ? 'bg-surface border-primary/40'
-              : 'bg-surface border-border'
+              ? 'bg-surface-raised border-primary/40'
+              : 'bg-surface-raised border-border'
       }`}
     >
       {/* Selection is a mode you enter, not a permanent fixture on every card.
@@ -323,7 +323,7 @@ function SparkCard({
               ▶
             </span>
             <span
-              className={`flex-1 font-display font-semibold leading-snug transition-colors group-hover:text-primary ${
+              className={`flex-1 font-semibold tracking-normal leading-snug transition-colors group-hover:text-primary ${
                 hot ? 'text-lg text-fg' : chilly ? 'text-sm text-fg-muted' : 'text-base text-fg'
               }`}
             >
@@ -407,7 +407,7 @@ function SparkCard({
             which pushes the same token under AA — so washed cards step the
             metadata up a rung rather than quietly failing. */}
         <div
-          className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${
+          className={`flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.6875rem] ${
             heat !== null && !chilly ? 'text-fg-muted' : 'text-fg-subtle'
           }`}
         >
@@ -452,7 +452,7 @@ function SparkCard({
             or keyboard focus and float clear of the flow, which is what lets a
             card collapse to the height of its content. Small screens and touch
             keep them in view, since there is no hover to reveal them there. */}
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:rounded-xl sm:border sm:border-border-strong sm:bg-surface-raised sm:p-1.5 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
           {isCold && onRevive && (
             <button
               type="button"
@@ -678,7 +678,7 @@ function TokenGate({
           <button
             type="button"
             onClick={generate}
-            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg transition-colors"
+            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer bg-primary text-on-primary hover:bg-primary-hover transition-colors"
           >
             Get my Kindling URL →
           </button>
@@ -1336,7 +1336,7 @@ function Dashboard({
               <button
                 type="button"
                 onClick={toast.action.run}
-                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary text-on-primary hover:bg-primary-hover hover:text-fg transition-colors cursor-pointer"
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary text-on-primary hover:bg-primary-hover transition-colors cursor-pointer"
               >
                 {toast.action.label}
               </button>
@@ -1536,7 +1536,7 @@ function Dashboard({
               type="button"
               onClick={handleKindle}
               disabled={kindling || !kindleText.trim()}
-              className="text-sm font-semibold px-4 min-h-11 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
+              className="text-sm font-semibold px-4 min-h-11 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
             >
               {kindling ? 'Kindling…' : 'Kindle'}
             </button>

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
+import { Geist_Mono } from 'next/font/google'
 import './globals.css'
 
 const raelaGrotesque = localFont({
@@ -30,13 +31,20 @@ const kineksRound = localFont({
   ],
 })
 
+// Metadata, counts and timestamps — the quiet machine voice under the idea.
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: 'Kindling',
   description: 'MCP server for capturing and surfacing sparks of thought',
 }
 
 export const viewport: Viewport = {
-  themeColor: '#352B4E',
+  themeColor: '#141018',
 }
 
 export default function RootLayout({
@@ -45,7 +53,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${raelaGrotesque.variable} ${kineksRound.variable}`}>
+    <html lang="en" className={`${raelaGrotesque.variable} ${kineksRound.variable} ${geistMono.variable}`}>
       <body>
         {/*
           The dashboard shell server-renders a capture box, tabs and a sort
