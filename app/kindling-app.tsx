@@ -322,9 +322,11 @@ function SparkCard({
         </p>
       )}
 
-      {/* Footer: quiet chips, then the machine-voice metadata. One row, so a
-          collapsed card stays near 100px tall. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-[1.125rem] sm:pr-2">
+      {/* Footer: quiet chips and machine-voice metadata on the left, actions
+          on the right — all in flow, so the actions can never cover the
+          metadata. It wraps rather than overlapping when the row runs out. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 pl-[1.125rem]">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
         {tags.length > 0 && (
           <ul className="flex flex-wrap gap-1" aria-label="Tags">
             {shownTags.map((tag) => (
@@ -382,10 +384,11 @@ function SparkCard({
         </div>
       </div>
 
-      {/* Quick actions surface on hover or keyboard focus and float clear of
-          the flow, so they never add height. Touch and small screens keep
-          them in view, since there is no hover to reveal them. */}
-      <div className="flex flex-wrap items-center gap-1 pl-[1.125rem] sm:absolute sm:right-2 sm:bottom-2 sm:z-10 sm:pl-1 sm:rounded-lg sm:border sm:border-border-strong sm:bg-surface-hover sm:p-1 sm:shadow-lg sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
+
+      {/* Quick actions fade in on hover or keyboard focus; their space is
+          always reserved, so revealing them never shifts or covers anything.
+          Touch keeps them visible, since there is no hover to reveal them. */}
+      <div className="flex flex-wrap items-center justify-end gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
         {isCold && onRevive && (
           <button type="button" onClick={onRevive} className={`${action} text-cold-text hover:bg-cold/20`}>
             Revive
@@ -464,6 +467,7 @@ function SparkCard({
             Delete
           </button>
         )}
+      </div>
       </div>
     </div>
   )
