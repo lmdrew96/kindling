@@ -8,6 +8,7 @@ import {
   createSession,
   destroySession,
   getAccount,
+  getTokenOwner,
   hashPassword,
   normalizeEmail,
   isRateLimited,
@@ -19,6 +20,7 @@ import {
   verifyPassword,
   type Account,
 } from '@/lib/auth'
+import { parseKindlingToken } from '@/lib/token-input'
 
 /** PBKDF2 at 600k iterations is far too much CPU for the edge runtime. */
 export const runtime = 'nodejs'
@@ -79,9 +81,12 @@ export async function POST(req: Request) {
     }
 
     const { passwordHash, salt, iterations, hash } = await hashPassword(password)
-    // A fresh namespace needs no seeding — one with no sparks already reads as
-    // empty. Linking an existing token is the usual next step anyway.
-    const token = crypto.randomUUID()
+    // Adopt the token this browser is already using, so signing up never
+    // strands someone in an empty namespace beside their real one. Only an
+    // unowned token can be adopted; otherwise mint a fresh one.
+    const offered = parseKindlingToken(String(body.token ?? ''))
+    const adoptable = offered && !(await getTokenOwner(offered))
+    const token = adoptable ? offered : crypto.randomUUID()
     const account: Account = {
       email,
       passwordHash,
@@ -89,6 +94,7 @@ export async function POST(req: Request) {
       iterations,
       hash,
       token,
+      tokens: [{ token, label: 'Main' }],
       createdAt: new Date().toISOString(),
     }
 

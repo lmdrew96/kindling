@@ -36,17 +36,44 @@ export interface Account {
   salt: string // base64
   iterations: number
   hash: string // e.g. "SHA-256"
-  /** The token whose namespace this account owns. */
+  /**
+   * The DEFAULT token — where a fresh device lands after signing in. Which
+   * namespace a given browser is in lives in its token cookie, not here.
+   */
   token: string
+  /**
+   * Every namespace this account owns (work, personal…), default included.
+   * Absent on records written before multi-token; read through
+   * accountTokens(), never directly.
+   */
+  tokens?: AccountToken[]
   createdAt: string
 }
 
-export type PublicAccount = Pick<Account, 'email' | 'token' | 'createdAt'>
+export interface AccountToken {
+  token: string
+  label: string
+}
+
+export const MAX_LABEL_LENGTH = 40
+export const MAX_TOKENS_PER_ACCOUNT = 20
+
+/** Old single-token records read as one namespace called "Main". */
+export const accountTokens = (a: Account): AccountToken[] =>
+  a.tokens && a.tokens.length > 0 ? a.tokens : [{ token: a.token, label: 'Main' }]
+
+export const ownsToken = (a: Account, token: string): boolean =>
+  accountTokens(a).some((t) => t.token === token)
+
+export type PublicAccount = Pick<Account, 'email' | 'token' | 'createdAt'> & {
+  tokens: AccountToken[]
+}
 
 /** The hash and salt must never leave the server, so every response goes through this. */
 export const publicAccount = (a: Account): PublicAccount => ({
   email: a.email,
   token: a.token,
+  tokens: accountTokens(a),
   createdAt: a.createdAt,
 })
 

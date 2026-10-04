@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { KindlingApp } from './kindling-app'
 import { TOKEN_COOKIE } from '@/lib/token-cookie'
-import { SESSION_COOKIE, accountFromSessionId, publicAccount } from '@/lib/auth'
+import { SESSION_COOKIE, accountFromSessionId, ownsToken, publicAccount } from '@/lib/auth'
 import { UUID_RE } from '@/components/ui'
 
 /**
@@ -15,9 +15,11 @@ import { UUID_RE } from '@/components/ui'
 export default async function Page() {
   const jar = await cookies()
 
-  // The account's token wins when signed in; otherwise whatever this browser
-  // remembers. Resolving the session here rather than in an effect is what
-  // keeps a signed-in user from flashing the landing page on every load.
+  // Signed in, this browser stays in whichever of the account's namespaces it
+  // last switched to (the cookie), falling back to the account's default.
+  // Signed out, whatever this browser remembers. Resolving the session here
+  // rather than in an effect is what keeps a signed-in user from flashing
+  // the landing page on every load.
   const account = await accountFromSessionId(jar.get(SESSION_COOKIE)?.value)
 
   const stored = jar.get(TOKEN_COOKIE)?.value
@@ -25,7 +27,13 @@ export default async function Page() {
 
   return (
     <KindlingApp
-      initialToken={account?.token ?? cookieToken}
+      initialToken={
+        account
+          ? cookieToken && ownsToken(account, cookieToken)
+            ? cookieToken
+            : account.token
+          : cookieToken
+      }
       initialAccount={account ? publicAccount(account) : null}
     />
   )

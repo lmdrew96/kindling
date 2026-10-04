@@ -64,13 +64,18 @@ export function Sidebar({
   account,
   onClearToken,
   counts,
+  token,
+  onSwitchToken,
 }: {
   view: View
   onView: (v: View) => void
   exportHref: string
-  account: { email: string } | null
+  account: { email: string; tokens: Array<{ token: string; label: string }> } | null
   onClearToken: () => void
   counts: { active: number; cold: number; archived: number }
+  /** The namespace this browser is in, for the switcher. */
+  token: string
+  onSwitchToken: (t: string) => void
 }) {
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false)
 
@@ -125,6 +130,26 @@ export function Sidebar({
             <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
           </button>
         </div>
+
+        {/* Only worth the space once there is something to switch between. */}
+        {!collapsed && account && account.tokens.length > 1 && (
+          <label className="mx-4 mb-3 flex flex-col gap-1">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-fg-subtle">
+              Namespace
+            </span>
+            <select
+              value={token}
+              onChange={(e) => onSwitchToken(e.target.value)}
+              className="min-h-9 rounded-lg border border-border-strong bg-surface-raised px-2 text-sm text-fg cursor-pointer"
+            >
+              {account.tokens.map((t) => (
+                <option key={t.token} value={t.token}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <nav className="flex flex-col gap-1 px-2">
           {NAV.map((item) =>

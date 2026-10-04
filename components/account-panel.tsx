@@ -4,9 +4,16 @@ import { useState } from 'react'
 import { BTN_GHOST, BTN_PRIMARY, INPUT } from './ui'
 import { TokenDisplay } from './token-display'
 
+export interface AccountToken {
+  token: string
+  label: string
+}
+
 export interface PublicAccount {
   email: string
+  /** The default token — where a fresh device lands after signing in. */
   token: string
+  tokens: AccountToken[]
   createdAt: string
 }
 
@@ -35,12 +42,15 @@ export function AccountPanel({
   token,
   onAccount,
   onClose,
+  onSwitchToken,
 }: {
   account: PublicAccount | null
   /** The token this browser is currently using, account or not. */
   token: string | null
   onAccount: (a: PublicAccount | null) => void
   onClose: () => void
+  /** Moves this browser into another of the account's namespaces. */
+  onSwitchToken?: (t: string) => void
 }) {
   return (
     <section
@@ -61,7 +71,12 @@ export function AccountPanel({
       </div>
 
       {account ? (
-        <SignedIn account={account} onAccount={onAccount} />
+        <SignedIn
+          account={account}
+          token={token}
+          onAccount={onAccount}
+          onSwitchToken={onSwitchToken}
+        />
       ) : (
         <SignedOut token={token} onAccount={onAccount} />
       )}
@@ -88,23 +103,14 @@ function SignedOut({
     setBusy(true)
     setError('')
     try {
+      // Signing up adopts the token this browser already has, so nobody is
+      // stranded in an empty namespace wondering where their sparks went.
       const { account } = await api<{ account: PublicAccount }>('/api/auth', {
         action: mode,
         email,
         password,
+        ...(mode === 'signup' && token ? { token } : {}),
       })
-      // Signing up mints a fresh empty namespace. If this browser already had
-      // a token, link it straight away rather than stranding the user in an
-      // empty Kindling wondering where their sparks went.
-      if (mode === 'signup' && token && token !== account.token) {
-        try {
-          const linked = await api<{ account: PublicAccount }>('/api/link', { token })
-          onAccount(linked.account)
-          return
-        } catch {
-          /* Account exists; linking can be retried from the signed-in view. */
-        }
-      }
       onAccount(account)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.')
@@ -188,41 +194,64 @@ function SignedOut({
 
 // ─── Signed in ───────────────────────────────────────────────────────────────
 
+const send = async <T,>(method: 'PATCH' | 'DELETE', body: unknown): Promise<T> => {
+  const res = await fetch('/api/link', {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? 'Something went wrong.')
+  return data as T
+}
+
 function SignedIn({
   account,
+  token,
   onAccount,
+  onSwitchToken,
 }: {
   account: PublicAccount
+  token: string | null
   onAccount: (a: PublicAccount | null) => void
+  onSwitchToken?: (t: string) => void
 }) {
   const [linkInput, setLinkInput] = useState('')
-  const [message, setMessage] = useState('')
+  const [newLabel, setNewLabel] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const link = async () => {
+  /** One wrapper so every token action reports errors the same way. */
+  const run = async (action: () => Promise<{ account: PublicAccount }>) => {
     setBusy(true)
     setError('')
-    setMessage('')
     try {
-      const res = await api<{ account: PublicAccount; previousSparkCount: number }>(
-        '/api/link',
-        { token: linkInput }
-      )
-      setLinkInput('')
-      setMessage(
-        res.previousSparkCount > 0
-          ? `Linked. Your previous namespace still holds ${res.previousSparkCount} spark${
-              res.previousSparkCount === 1 ? '' : 's'
-            } and is still reachable at its own URL — nothing was deleted.`
-          : 'Linked. This account now points at that token.'
-      )
+      const res = await action()
       onAccount(res.account)
+      return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not link that token.')
+      setError(e instanceof Error ? e.message : 'Something went wrong.')
+      return false
     } finally {
       setBusy(false)
     }
+  }
+
+  const link = async () => {
+    const ok = await run(() =>
+      api('/api/link', { token: linkInput, label: newLabel.trim() || 'Linked' })
+    )
+    if (ok) {
+      setLinkInput('')
+      setNewLabel('')
+    }
+  }
+
+  const create = async () => {
+    const ok = await run(() =>
+      api('/api/link', { create: true, label: newLabel.trim() || 'New' })
+    )
+    if (ok) setNewLabel('')
   }
 
   const logout = async () => {
@@ -239,43 +268,75 @@ function SignedIn({
         Signed in as <strong className="text-fg">{account.email}</strong>
       </p>
 
-      <div className="space-y-1.5">
-        <p className="text-xs font-semibold text-fg">The token this account points at</p>
-        <TokenDisplay token={account.token} />
+      {/* Each namespace keeps its own sparks and its own MCP URL — the token
+          is the path — so a work client and a personal client never mix. */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-fg">Your tokens</p>
+        <ul className="space-y-2">
+          {account.tokens.map((t) => (
+            <TokenRow
+              key={t.token}
+              entry={t}
+              isCurrent={t.token === token}
+              isDefault={t.token === account.token}
+              canRemove={account.tokens.length > 1}
+              busy={busy}
+              onUse={onSwitchToken ? () => onSwitchToken(t.token) : undefined}
+              onRename={(label) => run(() => send('PATCH', { token: t.token, label }))}
+              onMakeDefault={() => void run(() => send('PATCH', { token: t.token, default: true }))}
+              onRemove={() => void run(() => send('DELETE', { token: t.token }))}
+            />
+          ))}
+        </ul>
       </div>
 
-      {/* The retrofit path: someone who used Kindling before accounts existed
-          points their new account at the token they already have. */}
       <div className="border-t border-border pt-3 space-y-2">
-        <label className="block text-xs font-semibold text-fg" htmlFor="link-token">
-          Link a different token
-        </label>
+        <p className="text-xs font-semibold text-fg">Add a token</p>
         <p className="text-xs text-fg-subtle">
-          Paste a token or a whole Kindling URL. The account moves to it; nothing is deleted,
-          and any MCP client already pointed at it keeps working.
+          Start a fresh namespace (say, work beside personal), or link one you already have —
+          paste a token or a whole Kindling URL. Nothing is moved or deleted, and any MCP client
+          already pointed at a linked token keeps working.
         </p>
-        <div className="flex gap-2">
+        <input
+          value={newLabel}
+          onChange={(e) => { setNewLabel(e.target.value); setError('') }}
+          placeholder="Name it — e.g. Work"
+          aria-label="Name for the new token"
+          maxLength={40}
+          className={`w-full text-xs px-3 py-2 ${INPUT}`}
+        />
+        <div className="flex flex-wrap gap-2">
           <input
-            id="link-token"
             value={linkInput}
             onChange={(e) => { setLinkInput(e.target.value); setError('') }}
-            onKeyDown={(e) => e.key === 'Enter' && void link()}
-            placeholder="Token or URL"
+            onKeyDown={(e) => e.key === 'Enter' && linkInput.trim() && void link()}
+            placeholder="Existing token or URL (optional)"
+            aria-label="Existing token or URL to link"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            className={`flex-1 text-xs px-3 py-2 ${INPUT}`}
+            className={`flex-1 min-w-48 text-xs px-3 py-2 ${INPUT}`}
           />
-          <button
-            type="button"
-            onClick={() => void link()}
-            disabled={busy || !linkInput.trim()}
-            className={`px-4 min-h-11 text-xs ${BTN_GHOST} disabled:opacity-40`}
-          >
-            {busy ? 'Linking…' : 'Link'}
-          </button>
+          {linkInput.trim() ? (
+            <button
+              type="button"
+              onClick={() => void link()}
+              disabled={busy}
+              className={`px-4 min-h-11 text-xs ${BTN_GHOST} disabled:opacity-40`}
+            >
+              {busy ? 'Linking…' : 'Link it'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void create()}
+              disabled={busy}
+              className={`px-4 min-h-11 text-xs ${BTN_GHOST} disabled:opacity-40`}
+            >
+              {busy ? 'Creating…' : 'Create new'}
+            </button>
+          )}
         </div>
-        {message && <p className="text-xs text-primary">{message}</p>}
         {error && (
           <p className="text-xs text-danger" role="alert">
             {error}
@@ -293,5 +354,136 @@ function SignedIn({
         </button>
       </div>
     </div>
+  )
+}
+
+function TokenRow({
+  entry,
+  isCurrent,
+  isDefault,
+  canRemove,
+  busy,
+  onUse,
+  onRename,
+  onMakeDefault,
+  onRemove,
+}: {
+  entry: AccountToken
+  isCurrent: boolean
+  isDefault: boolean
+  canRemove: boolean
+  busy: boolean
+  onUse?: () => void
+  onRename: (label: string) => Promise<boolean>
+  onMakeDefault: () => void
+  onRemove: () => void
+}) {
+  const [renaming, setRenaming] = useState(false)
+  const [label, setLabel] = useState(entry.label)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  const saveLabel = async () => {
+    const next = label.trim()
+    if (!next || next === entry.label) {
+      setRenaming(false)
+      setLabel(entry.label)
+      return
+    }
+    if (await onRename(next)) setRenaming(false)
+  }
+
+  const small = `px-2.5 min-h-8 pointer-coarse:min-h-11 text-xs ${BTN_GHOST} disabled:opacity-40`
+
+  return (
+    <li
+      className={`rounded-lg border bg-surface-raised p-3 space-y-2 ${
+        isCurrent ? 'border-border-strong shadow-[inset_3px_0_0_var(--color-primary)]' : 'border-border'
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {renaming ? (
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void saveLabel()
+              if (e.key === 'Escape') { setRenaming(false); setLabel(entry.label) }
+            }}
+            onBlur={() => void saveLabel()}
+            maxLength={40}
+            autoFocus
+            aria-label={`Rename ${entry.label}`}
+            className={`text-sm px-2 py-1 ${INPUT}`}
+          />
+        ) : (
+          <span className="text-sm font-semibold text-fg">{entry.label}</span>
+        )}
+        <span className="font-mono text-[0.6875rem] text-fg-subtle">{entry.token.slice(0, 8)}…</span>
+        {isCurrent && (
+          <span className="rounded border border-border-strong px-1.5 font-mono text-[0.625rem] uppercase tracking-wide text-fg-muted">
+            this browser
+          </span>
+        )}
+        {isDefault && (
+          <span className="rounded border border-border-strong px-1.5 font-mono text-[0.625rem] uppercase tracking-wide text-fg-muted">
+            default
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {!isCurrent && onUse && (
+          <button type="button" onClick={onUse} disabled={busy} className={small}>
+            Use here
+          </button>
+        )}
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className={small}>
+          {open ? 'Hide token' : 'Show token'}
+        </button>
+        <button type="button" onClick={() => setRenaming(true)} disabled={busy} className={small}>
+          Rename
+        </button>
+        {!isDefault && (
+          <button
+            type="button"
+            onClick={onMakeDefault}
+            disabled={busy}
+            title="The one a new device opens after you sign in"
+            className={small}
+          >
+            Make default
+          </button>
+        )}
+        {canRemove &&
+          (confirmRemove ? (
+            <>
+              <button
+                type="button"
+                onClick={() => { setConfirmRemove(false); onRemove() }}
+                disabled={busy}
+                className="px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-lg border border-danger/50 text-xs text-danger hover:bg-danger/10 transition-colors cursor-pointer disabled:opacity-40"
+              >
+                Confirm unlink
+              </button>
+              <button type="button" onClick={() => setConfirmRemove(false)} className={small}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirmRemove(true)} disabled={busy} className={small}>
+              Unlink
+            </button>
+          ))}
+      </div>
+
+      {confirmRemove && (
+        <p className="text-xs text-fg-muted">
+          Unlinking doesn&rsquo;t delete these sparks — they stay at their own URL — but the
+          account will stop remembering this token. Copy it first if you might want it back.
+        </p>
+      )}
+      {(open || confirmRemove) && <TokenDisplay token={entry.token} />}
+    </li>
   )
 }

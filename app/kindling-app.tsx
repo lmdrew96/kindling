@@ -683,11 +683,13 @@ function Dashboard({
   account,
   onAccount,
   onSignOut,
+  onSwitchToken,
 }: {
   token: string
   account: PublicAccount | null
   onAccount: (a: PublicAccount | null) => void
   onSignOut: () => void
+  onSwitchToken: (t: string) => void
 }) {
   const [view, setView] = useState<View>('sparks')
   const [sparks, setSparks] = useState<Spark[]>([])
@@ -1328,6 +1330,8 @@ function Dashboard({
         account={account}
         onClearToken={() => setConfirmForget(true)}
         counts={statusCounts}
+        token={token}
+        onSwitchToken={onSwitchToken}
       />
 
       <div className="flex-1 min-w-0 pb-20 md:pb-0">
@@ -1370,6 +1374,7 @@ function Dashboard({
               token={token}
               onAccount={onAccount}
               onClose={() => setView('sparks')}
+              onSwitchToken={onSwitchToken}
             />
             {/* The sidebar carries this on desktop; the bottom bar has no room. */}
             {!account && (
@@ -1851,11 +1856,19 @@ export function KindlingApp({
    * localStorage copy is deliberately never rewritten, so a token that lives
    * only in this browser cannot be lost by using an account.
    */
+  /** Moves this browser into one of the account's namespaces. */
+  const switchToken = (t: string) => {
+    writeTokenCookie(t)
+    setToken(t)
+  }
+
   const onAccount = (next: PublicAccount | null) => {
     setAccount(next)
     if (next) {
-      writeTokenCookie(next.token)
-      setToken(next.token)
+      // Account edits (rename, add, make default) leave this browser where it
+      // is; only signing in from elsewhere, or unlinking the namespace it's
+      // in, moves it — to the account's default.
+      if (!token || !next.tokens.some((t) => t.token === token)) switchToken(next.token)
       return
     }
     // Signed out. Fall back to whatever this browser remembers on its own.
@@ -1883,8 +1896,12 @@ export function KindlingApp({
   if (!token) return <TokenGate onToken={adopt} account={account} onAccount={onAccount} />
 
   return (
+    // Keyed by token: switching namespaces is a fresh dashboard, not a
+    // half-updated one still holding the other namespace's selection.
     <Dashboard
+      key={token}
       token={token}
+      onSwitchToken={switchToken}
       account={account}
       onAccount={onAccount}
       onSignOut={signOut}

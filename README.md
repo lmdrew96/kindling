@@ -134,7 +134,7 @@ Optional. Email and password, no third-party auth provider. The pattern is porte
 
 **What an account does:** remembers which token is yours. That is all it does.
 
-**What it deliberately does not do:** gate anything. No middleware, no session check on the MCP route, no per-spark authorization. The only route that requires a session is `POST /api/link`, because linking acts on an account rather than on a token.
+**What it deliberately does not do:** gate anything. No middleware, no session check on the MCP route, no per-spark authorization. The only route that requires a session is `/api/link`, because managing an account's tokens acts on an account rather than on a token.
 
 ### Key space
 
@@ -155,13 +155,13 @@ Sessions are opaque 32-byte random ids in Redis behind an `HttpOnly; Secure; Sam
 
 Login returns the same message for an unknown address and a wrong password, so the endpoint cannot be used to enumerate accounts. Signup deliberately *does* say when an address is taken — the alternative is a user who cannot tell why their account will not create.
 
-### Linking an existing token
+### Tokens on an account
 
-The retrofit path, for anyone who used Kindling before accounts existed.
+An account holds **several tokens** — say, work beside personal. Each is its own namespace with its own sparks and its own `/{token}/mcp` URL (the token is the path), so a work client and a personal client never mix. Records written before multi-token read as a single token labelled "Main".
 
-**The linked token wins.** The account is repointed at it rather than the sparks being copied across, because the token is what every already-configured MCP client has in its config. Rotating it would silently break all of them.
+**Which namespace a browser is in is per browser**, held in its token cookie. Signed in, the server uses the cookie's token if the account owns it, otherwise the account's **default** — the one a fresh device lands on. The dashboard switches namespaces from the sidebar (once there are two) or the Account panel.
 
-The account's previous token is **released, never deleted**: its sparks stay exactly where they were and stay reachable at their own URL. The response reports how many sparks the previous namespace held, so the dashboard can say so rather than silently orphaning them.
+**Linking appends.** Linking an existing token adds it to the account rather than replacing anything, because the token is what every already-configured MCP client has in its config. **Unlinking releases ownership, never data**: the sparks stay reachable at their own URL. An account's last token can't be unlinked. Signing up adopts the token the browser is already using (if unowned), so nobody is stranded in an empty namespace.
 
 A token already owned by another account returns `403`. Pasting a whole Kindling URL where a token is expected works — the UUID is extracted — because an unknown token addresses an *empty* namespace rather than erroring, and a near-miss would render as a perfectly valid Kindling with nothing in it.
 
@@ -169,7 +169,6 @@ A token already owned by another account returns `403`. Pasting a whole Kindling
 
 - **No password reset.** There is no mail sender. Keep the token backed up as well.
 - **No email verification.**
-- **One token per account.** Work-vs-personal namespaces would need a token list rather than a single field.
 
 ---
 
@@ -639,15 +638,15 @@ The returned account is always the public projection — `email`, `token`, `crea
 
 **Responses:** `200` · `400` bad email or short password · `401` bad credentials · `409` address already registered on signup · `429` rate limited
 
-### `POST /api/link`
+### `/api/link`
 
-```json
-{ "token": "<a token, or a whole Kindling URL>" }
-```
+Manages the signed-in account's tokens. Requires a session — the only route in the app that does. Every success returns `{ account }` with the full `tokens` list.
 
-Repoints the signed-in account at that token. Requires a session — the only route in the app that does.
+- **`POST`** `{ "token": "<token or URL>", "label": "Work" }` links an existing token; `{ "create": true, "label": "Work" }` mints a fresh one. `400` unparseable/duplicate token or bad label · `403` owned by another account
+- **`PATCH`** `{ "token": "…", "label": "New name" }` renames; `{ "token": "…", "default": true }` makes it the default. `404` not on this account
+- **`DELETE`** `{ "token": "…" }` unlinks (releases ownership; sparks are kept). `400` if it's the last token · `404` not on this account
 
-**Responses:** `200` with `{ account, previous, previousSparkCount }` · `400` unparseable token · `401` not signed in · `403` the token belongs to another account
+All return `401` when not signed in. Labels are 1–40 characters; an account holds up to 20 tokens.
 
 ---
 
