@@ -686,7 +686,9 @@ function Dashboard({
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const [search, setSearch] = useState('')
   const [kindleText, setKindleText] = useState('')
-  const [tagInput, setTagInput] = useState('')
+  const [tagChips, setTagChips] = useState<string[]>([])
+  const [tagDraft, setTagDraft] = useState('')
+  const [composerFocused, setComposerFocused] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [kindling, setKindling] = useState(false)
@@ -807,17 +809,30 @@ function Dashboard({
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`
-  }, [kindleText])
+  }, [kindleText, composerFocused])
+
+  // At rest the composer is one line; it opens on focus (click, tab or `c`)
+  // and folds back only once it is both empty and blurred, so a half-written
+  // thought never disappears behind a collapse.
+  const composerOpen =
+    composerFocused || kindleText.length > 0 || tagChips.length > 0 || tagDraft.length > 0
+
+  const commitTagDraft = (raw: string) => {
+    const next = normalizeTags([...tagChips, ...raw.split(',')])
+    setTagChips(next)
+    setTagDraft('')
+  }
 
   const handleKindle = async () => {
-    if (!kindleText.trim()) return
-    const tags = normalizeTags(tagInput.split(','))
+    if (!kindleText.trim() || kindling) return
+    const tags = normalizeTags([...tagChips, ...tagDraft.split(',')])
     setKindling(true)
     try {
       const spark = await kindleApi(token, kindleText.trim(), tags)
       setSparks((prev) => [spark, ...prev])
       setKindleText('')
-      setTagInput('')
+      setTagChips([])
+      setTagDraft('')
       showToast('Spark kindled.')
       kindleRef.current?.focus()
     } catch {
@@ -1368,66 +1383,102 @@ function Dashboard({
         )}
 
         {/* Kindle input */}
-        <div className="relative overflow-hidden rounded-2xl p-5 space-y-3 bg-surface border border-border-strong shadow-lg">
-          {/* Capture is the one thing this app exists to do, and it looked like
-              a comment box. The warm bleed at the top edge is the only place
-              marigold appears at any size — it marks the hearth. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-24"
-            style={{
-              background:
-                'linear-gradient(to bottom, color-mix(in srgb, var(--color-primary) 16%, transparent), transparent)',
-            }}
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-primary/70"
-          />
+        <div
+          onFocus={() => setComposerFocused(true)}
+          onBlur={(e) => {
+            // Moving focus between the composer's own fields is not leaving it.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setComposerFocused(false)
+          }}
+          className={`rounded-2xl border bg-surface transition-colors motion-reduce:transition-none ${
+            composerOpen ? 'border-border-strong p-4 space-y-3 shadow-lg' : 'border-border px-4 py-2.5'
+          }`}
+        >
           <textarea
             ref={kindleRef}
             value={kindleText}
             onChange={(e) => setKindleText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleKindle()
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
             }}
             placeholder="What's on your mind? Capture it before it fades…"
             aria-label="Capture a spark"
-            rows={3}
-            className="relative w-full text-base outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
+            rows={composerOpen ? 3 : 1}
+            className="block w-full text-base outline-none resize-none overflow-y-auto leading-relaxed bg-transparent text-fg placeholder:text-fg-subtle"
           />
-          <div className="flex gap-2 items-center">
-            <input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              placeholder="Tags (comma-separated)"
-              aria-label="Tags, comma separated"
-              list="known-tags"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className={`flex-1 text-xs px-3 py-2 ${INPUT}`}
-            />
-            {/* Suggests tags already in use, so the taxonomy stops fragmenting
-                into writing / Writing / write across three sessions. */}
-            <datalist id="known-tags">
-              {knownTags.map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
-            <button
-              type="button"
-              onClick={handleKindle}
-              disabled={kindling || !kindleText.trim()}
-              className="text-sm font-semibold px-4 min-h-11 rounded-lg cursor-pointer bg-primary text-on-primary hover:bg-primary-hover disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary transition-colors"
-            >
-              {kindling ? 'Kindling…' : 'Kindle'}
-            </button>
-          </div>
-          <p className="text-xs text-fg-subtle">
-            ⌘↵ to submit · <kbd>c</kbd> to capture · <kbd>/</kbd> to search · <kbd>Esc</kbd> to
-            leave a field
-          </p>
+          {composerOpen && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Chip input: Enter or comma commits, Backspace on an empty
+                    draft takes the last chip back. */}
+                <div className={`flex flex-1 min-w-48 flex-wrap items-center gap-1 px-2 py-1.5 ${INPUT}`}>
+                  {tagChips.map((t) => (
+                    <span
+                      key={t}
+                      className="flex items-center gap-1 rounded-md bg-tag-bg pl-1.5 pr-0.5 py-0.5 text-[0.6875rem] leading-none text-tag-fg"
+                    >
+                      {t}
+                      <button
+                        type="button"
+                        onClick={() => setTagChips((prev) => prev.filter((x) => x !== t))}
+                        aria-label={`Remove tag ${t}`}
+                        className="rounded px-1 text-fg-subtle hover:text-fg cursor-pointer"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    value={tagDraft}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v.includes(',')) commitTagDraft(v)
+                      else setTagDraft(v)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        void handleKindle()
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (tagDraft.trim()) commitTagDraft(tagDraft)
+                      } else if (e.key === 'Backspace' && tagDraft === '' && tagChips.length > 0) {
+                        e.preventDefault()
+                        setTagChips((prev) => prev.slice(0, -1))
+                      }
+                    }}
+                    placeholder={tagChips.length ? 'Add tag' : 'Tags'}
+                    aria-label="Add a tag (Enter or comma to add)"
+                    list="known-tags"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="flex-1 min-w-20 bg-transparent text-xs text-fg outline-none placeholder:text-fg-subtle"
+                  />
+                </div>
+                {/* Suggests tags already in use, so the taxonomy stops fragmenting
+                    into writing / Writing / write across three sessions. */}
+                <datalist id="known-tags">
+                  {knownTags
+                    .filter((t) => !tagChips.includes(t))
+                    .map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                </datalist>
+                <button
+                  type="button"
+                  onClick={() => void handleKindle()}
+                  disabled={!kindleText.trim()}
+                  aria-busy={kindling}
+                  className={`text-sm px-5 min-h-11 ${BTN_PRIMARY}`}
+                >
+                  {kindling ? 'Kindling…' : 'Kindle'}
+                </button>
+              </div>
+              <p className="font-mono text-[0.6875rem] text-fg-subtle">
+                ⌘↵ to submit · <kbd>c</kbd> to capture · <kbd>/</kbd> to search · <kbd>Esc</kbd> to
+                leave a field
+              </p>
+            </>
+          )}
         </div>
 
         {/* Search */}
