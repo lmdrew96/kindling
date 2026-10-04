@@ -60,7 +60,7 @@ const titleField = z
 const kindField = z
   .enum(SPARK_KINDS)
   .describe(
-    'What sort of idea it is: story (fiction), app-feature (something to build in one of the user\'s apps), research, reading (something to read), essay (nonfiction writing), other.'
+    'What sort of idea it is: story (fiction), app-feature (labelled "Development" in the dashboard: something to build or change in one of the user\'s apps), research, reading (something to read), essay (nonfiction writing), other.'
   )
 
 const homeField = z

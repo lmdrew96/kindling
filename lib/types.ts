@@ -9,7 +9,7 @@ export type SparkKind = (typeof SPARK_KINDS)[number]
 
 export const KIND_LABELS: Record<SparkKind, string> = {
   story: 'Story',
-  'app-feature': 'App feature',
+  'app-feature': 'Development',
   research: 'Research',
   reading: 'Reading',
   essay: 'Essay',
