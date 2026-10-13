@@ -710,6 +710,73 @@ const COMPARATORS: Record<SortKey, (a: Spark, b: Spark) => number> = {
   neglected: (a, b) => lastTouched(a) - lastTouched(b),
 }
 
+// ─── Layout ───────────────────────────────────────────────────────────────────
+
+/**
+ * List or board-by-home — a per-browser choice like the theme, so it lives in
+ * localStorage. Read through useSyncExternalStore: the lint rule bars the
+ * mount-effect route, and this also keeps two open tabs in step.
+ */
+type Layout = 'list' | 'home'
+
+const LAYOUT_KEY = 'kindling:layout'
+const LAYOUT_EVENT = 'kindling:layout'
+// Holds the choice for this page when storage is unavailable (private mode).
+let layoutFallback: Layout = 'list'
+
+const readLayout = (): Layout => {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY)
+    return raw === 'home' || raw === 'list' ? raw : layoutFallback
+  } catch {
+    return layoutFallback
+  }
+}
+
+const subscribeLayout = (onChange: () => void): (() => void) => {
+  window.addEventListener('storage', onChange)
+  window.addEventListener(LAYOUT_EVENT, onChange)
+  return () => {
+    window.removeEventListener('storage', onChange)
+    window.removeEventListener(LAYOUT_EVENT, onChange)
+  }
+}
+
+const writeLayout = (layout: Layout): void => {
+  layoutFallback = layout
+  try {
+    localStorage.setItem(LAYOUT_KEY, layout)
+  } catch {
+    /* private mode: the fallback carries it for this page */
+  }
+  window.dispatchEvent(new Event(LAYOUT_EVENT))
+}
+
+const LAYOUT_LABELS: Record<Layout, string> = { list: 'List', home: 'By home' }
+
+/**
+ * Sparks grouped by home, homes alphabetical, homeless ones last as
+ * "Unsorted". Keeps the incoming order inside each group, so the chosen sort
+ * still applies.
+ */
+const groupByHome = (sparks: Spark[]): Array<{ home: string | null; sparks: Spark[] }> => {
+  const byHome = new Map<string, Spark[]>()
+  const homeless: Spark[] = []
+  for (const s of sparks) {
+    const home = s.home?.trim()
+    if (!home) {
+      homeless.push(s)
+      continue
+    }
+    byHome.set(home, [...(byHome.get(home) ?? []), s])
+  }
+  const groups: Array<{ home: string | null; sparks: Spark[] }> = Array.from(byHome)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([home, list]) => ({ home, sparks: list }))
+  if (homeless.length > 0) groups.push({ home: null, sparks: homeless })
+  return groups
+}
+
 // ─── Kind filter ─────────────────────────────────────────────────────────────
 
 /** 'unsorted' finds the sparks captured before kinds existed. */
@@ -745,6 +812,7 @@ function Dashboard({
   const [sparks, setSparks] = useState<Spark[]>([])
   const [tab, setTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('recall')
+  const layout = useSyncExternalStore(subscribeLayout, readLayout, () => 'list' as const)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const [search, setSearch] = useState('')
@@ -1351,6 +1419,27 @@ function Dashboard({
     tabRefs.current[target]?.focus()
   }
 
+  /** One card in the main list — shared by the list and the by-home board. */
+  const renderCard = (spark: Spark) => (
+    <SparkCard
+      key={spark.id}
+      spark={spark}
+      decayDays={decayDays}
+      onArchive={spark.status !== 'archived' ? () => handleArchive(spark) : undefined}
+      onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
+      onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}
+      showStatus={searching}
+      selected={selected.has(spark.id)}
+      onToggleSelected={() => toggleSelected(spark.id)}
+      onDelete={() => setConfirmDelete(spark)}
+      onEdit={() => setEditing(spark)}
+      onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
+      onToggleStanding={() => void handleToggleStanding(spark)}
+      onSnooze={spark.status === 'active' ? (d) => void handleSnooze(spark, d) : undefined}
+      onUnsnooze={() => void handleUnsnooze(spark)}
+    />
+  )
+
   const tabLabel = (t: Tab): string => {
     const labels: Record<Tab, string> = {
       active: 'Active',
@@ -1909,6 +1998,25 @@ function Dashboard({
             ))}
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Layout" className="flex rounded-lg border border-border bg-surface p-1">
+            {(Object.keys(LAYOUT_LABELS) as Layout[]).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => writeLayout(l)}
+                aria-pressed={layout === l}
+                className={`text-xs px-3 min-h-9 pointer-coarse:min-h-11 rounded-md cursor-pointer transition-colors ${
+                  layout === l
+                    ? 'bg-surface-hover text-fg font-semibold shadow-sm'
+                    : 'text-fg-muted hover:text-fg'
+                }`}
+              >
+                {LAYOUT_LABELS[l]}
+              </button>
+            ))}
+          </div>
+
           <label className="flex items-center gap-2 text-xs text-fg-subtle">
             Sort
             <select
@@ -1923,6 +2031,7 @@ function Dashboard({
               ))}
             </select>
           </label>
+          </div>
         </div>
 
         {/* Kind filter. A filter, not navigation, so no ember: the active chip
@@ -1969,30 +2078,33 @@ function Dashboard({
           <p className="text-sm py-8 text-center text-fg-subtle">Nothing of that kind here.</p>
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={searching} />
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((spark) => (
-              <SparkCard
-                key={spark.id}
-                spark={spark}
-                decayDays={decayDays}
-                onArchive={spark.status !== 'archived' ? () => handleArchive(spark) : undefined}
-                onRevive={spark.status === 'cold' ? () => handleRevive(spark) : undefined}
-                onUnarchive={spark.status === 'archived' ? () => handleUnarchive(spark) : undefined}
-                showStatus={searching}
-                selected={selected.has(spark.id)}
-                onToggleSelected={() => toggleSelected(spark.id)}
-                onDelete={() => setConfirmDelete(spark)}
-                onEdit={() => setEditing(spark)}
-                onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
-                onToggleStanding={() => void handleToggleStanding(spark)}
-                onSnooze={
-                  spark.status === 'active' ? (d) => void handleSnooze(spark, d) : undefined
-                }
-                onUnsnooze={() => void handleUnsnooze(spark)}
-              />
+        ) : layout === 'home' ? (
+          // Two columns of homes on wide screens; each home is its own
+          // labelled section so a screen reader can jump between them.
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            {groupByHome(filtered).map((group) => (
+              <section
+                key={group.home ?? '\u0000unsorted'}
+                aria-label={group.home ?? 'Unsorted — no home yet'}
+                className="min-w-0 space-y-2 rounded-xl border border-border bg-surface p-3"
+              >
+                <h2 className="flex items-baseline justify-between gap-2 px-1">
+                  <span className="min-w-0 truncate text-sm font-semibold text-fg">
+                    {group.home ?? 'Unsorted'}
+                    {!group.home && (
+                      <span className="ml-2 text-xs font-normal text-fg-subtle">no home yet</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-[0.6875rem] text-fg-subtle">
+                    {group.sparks.length}
+                  </span>
+                </h2>
+                {group.sparks.map(renderCard)}
+              </section>
             ))}
           </div>
+        ) : (
+          <div className="space-y-2">{filtered.map(renderCard)}</div>
         )}
         </div>
         </>
