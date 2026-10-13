@@ -154,3 +154,61 @@ body {
     border-left-color: var(--color-cold) !important;
   }
 }
+
+/* Promotion flare (components/ember-flare.tsx). Both pieces start invisible
+   and end invisible, so a cut-short run under reduced motion shows nothing. */
+.ember-bloom {
+  position: absolute;
+  left: -90px;
+  top: -90px;
+  width: 180px;
+  height: 180px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-primary) 70%, transparent) 0%,
+    color-mix(in srgb, var(--color-hot) 35%, transparent) 40%,
+    transparent 70%
+  );
+  opacity: 0;
+  animation: ember-bloom 900ms ease-out forwards;
+}
+
+.ember-mote {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  box-shadow: 0 0 8px var(--color-hot);
+  opacity: 0;
+  animation: ember-rise 1100ms ease-out forwards;
+}
+
+@keyframes ember-bloom {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes ember-rise {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), -150px) scale(0.3);
+    opacity: 0;
+  }
+}

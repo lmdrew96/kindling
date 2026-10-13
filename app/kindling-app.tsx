@@ -30,6 +30,7 @@ import { SortDialog, type SortPatch } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 import { Sidebar, ThemeToggle, type View } from '@/components/sidebar'
+import { EmberFlare } from '@/components/ember-flare'
 
 // The origin never changes within a page's life, so there is nothing to
 // subscribe to — this exists only to satisfy useSyncExternalStore's signature.
@@ -413,9 +414,15 @@ function SparkCard({
               {new Date(spark.snooze_until).toLocaleDateString()}
             </span>
           )}
+          {/* Search mixes promoted and discarded sparks, so promoted wears
+              the ember rather than the same grey chip as archived. */}
           {showStatus && !isCold && (
-            <span className="rounded border border-border-strong px-1.5 text-fg-muted">
-              {promoted ? 'promoted' : spark.status === 'archived' ? 'archived' : 'active'}
+            <span
+              className={`rounded border px-1.5 ${
+                promoted ? 'border-primary/50 text-primary' : 'border-border-strong text-fg-muted'
+              }`}
+            >
+              {promoted ? '✦ promoted' : spark.status === 'archived' ? 'archived' : 'active'}
             </span>
           )}
         </div>
@@ -834,6 +841,8 @@ function Dashboard({
   const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
   const [editing, setEditing] = useState<Spark | null>(null)
   const [promoting, setPromoting] = useState<Spark | null>(null)
+  // Bumped per promotion so back-to-back promotions each get a fresh flare.
+  const [flare, setFlare] = useState<number | null>(null)
   const [recalled, setRecalled] = useState<Spark[] | null>(null)
   const [recalling, setRecalling] = useState(false)
   // Dismissed spotlight, by spark id — a different spark rising to the top
@@ -1280,6 +1289,11 @@ function Dashboard({
       const saved = await promoteApi(token, spark.id, target, notes)
       // Take the server's record, so promoted_at is its clock rather than ours.
       setSparks((prev) => prev.map((s) => (s.id === saved.id ? saved : s)))
+      // Played only once the write has landed — celebrating a failed save
+      // would be worse than no flare at all.
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setFlare((n) => (n ?? 0) + 1)
+      }
       showToast(`Promoted → ${target}`)
     } catch {
       setSparks(previous)
@@ -1372,6 +1386,7 @@ function Dashboard({
     .sort(COMPARATORS[sort])
 
   const searching = query.length > 0
+  const showWall = tab === 'promoted' && !searching
 
   // Raw statuses for the sidebar — promoted sparks count as archived there,
   // since that is what they are; the tab view splits them out.
@@ -1477,6 +1492,8 @@ function Dashboard({
           onPromote={(target, notes) => void handlePromote(promoting, target, notes)}
         />
       )}
+
+      {flare !== null && <EmberFlare key={flare} onDone={() => setFlare(null)} />}
 
       {confirmDelete && (
         <ConfirmDeleteDialog
@@ -1998,6 +2015,9 @@ function Dashboard({
             ))}
           </div>
 
+          {/* The wall has its own order (newest promotion first) and no
+              homes to group by, so it sets these aside. */}
+          {!showWall && (
           <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label="Layout" className="flex rounded-lg border border-border bg-surface p-1">
             {(Object.keys(LAYOUT_LABELS) as Layout[]).map((l) => (
@@ -2032,6 +2052,7 @@ function Dashboard({
             </select>
           </label>
           </div>
+          )}
         </div>
 
         {/* Kind filter. A filter, not navigation, so no ember: the active chip
@@ -2078,6 +2099,12 @@ function Dashboard({
           <p className="text-sm py-8 text-center text-fg-subtle">Nothing of that kind here.</p>
         ) : filtered.length === 0 ? (
           <EmptyState tab={tab} hasSearch={searching} />
+        ) : showWall ? (
+          <PromotedWall
+            sparks={filtered}
+            onEdit={setEditing}
+            onDelete={setConfirmDelete}
+          />
         ) : layout === 'home' ? (
           // Two columns of homes on wide screens; each home is its own
           // labelled section so a screen reader can jump between them.
@@ -2113,6 +2140,86 @@ function Dashboard({
       </div>
       </div>
     </main>
+  )
+}
+
+// ─── What they became ─────────────────────────────────────────────────────────
+
+/**
+ * The Promoted tab as a record of outcomes rather than another card list:
+ * what each spark became leads, the spark it came from follows. Newest
+ * promotion first, whatever the sort says — it's a timeline.
+ */
+function PromotedWall({
+  sparks,
+  onEdit,
+  onDelete,
+}: {
+  sparks: Spark[]
+  onEdit: (spark: Spark) => void
+  onDelete: (spark: Spark) => void
+}) {
+  const ordered = sparks
+    .slice()
+    .sort((a, b) => (b.promoted_at ?? 0) - (a.promoted_at ?? 0))
+
+  return (
+    <section aria-labelledby="wall-title" className="space-y-3">
+      <div>
+        <h2 id="wall-title" className="font-display text-lg font-bold text-fg">
+          What they became
+        </h2>
+        <p className="text-xs text-fg-subtle">
+          {ordered.length} spark{ordered.length === 1 ? '' : 's'} that turned into something real.
+        </p>
+      </div>
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {ordered.map((spark) => (
+          <li
+            key={spark.id}
+            className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-primary/30 bg-surface-raised px-4 py-3 shadow-[inset_3px_0_0_var(--color-primary)]"
+          >
+            {spark.promoted_at && (
+              <p
+                title={absoluteDate(spark.promoted_at)}
+                className="font-mono text-[0.6875rem] text-fg-subtle"
+              >
+                {new Date(spark.promoted_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}{' '}
+                · {relativeAge(spark.promoted_at)}
+              </p>
+            )}
+            <p className="break-words font-display text-lg font-bold leading-snug text-primary">
+              <span aria-hidden="true">✦ </span>
+              {spark.promoted_to}
+            </p>
+            <p className="text-xs text-fg-muted">
+              from <span className="font-semibold text-fg">{displayTitle(spark)}</span>
+              {spark.kind && <> · {KIND_LABELS[spark.kind]}</>}
+              {spark.home && <> · {spark.home}</>}
+            </p>
+            {spark.promoted_notes && (
+              <Markdown className="text-sm text-fg-muted">{spark.promoted_notes}</Markdown>
+            )}
+            <div className="mt-auto flex justify-end gap-1 pt-1">
+              <button
+                type="button"
+                onClick={() => onEdit(spark)}
+                className="text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-md text-fg-muted hover:bg-surface-hover hover:text-fg transition-colors cursor-pointer"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(spark)}
+                className="text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-md text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

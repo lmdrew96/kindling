@@ -96,7 +96,7 @@ export function HelpPanel({
           <Entry term="Promote">
             When a spark becomes something real — a project, a draft, a decision — promote it and
             say what it became. That record is the only evidence the system is working, and it
-            shows up in the Promoted tab.
+            shows up on the &ldquo;What they became&rdquo; wall in the Promoted tab.
           </Entry>
           <Entry term="Snooze and standing">
             Snooze holds a spark out of recall for a while without rejecting it. Marking one
