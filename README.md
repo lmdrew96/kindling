@@ -94,8 +94,9 @@ cp .env.example .env.local
 |---|---|---|
 | `UPSTASH_REDIS_REST_URL` | REST endpoint for your Upstash Redis database | Yes |
 | `UPSTASH_REDIS_REST_TOKEN` | REST auth token for that database | Yes |
+| `ANTHROPIC_API_KEY` | Claude API key for "Develop this" sessions (`app/api/develop/route.ts`) | No — without it, Develop shows a "not set up" message and everything else works |
 
-Both are read by `Redis.fromEnv()` in `lib/redis.ts`. There are no other environment variables — the app has no auth provider, no API keys, and no external services beyond Redis.
+The two Upstash values are read by `Redis.fromEnv()` in `lib/redis.ts`. The Anthropic key is only read by the Develop route.
 
 ### Running Locally
 
@@ -755,7 +756,7 @@ Dashboard mutations are optimistic — local state updates immediately and the r
 Built for Vercel. There's no `vercel.json` and no custom config — the defaults work.
 
 1. Import the repo into Vercel.
-2. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as environment variables (Production, Preview, and Development as needed).
+2. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as environment variables (Production, Preview, and Development as needed), plus `ANTHROPIC_API_KEY` if you want Develop sessions.
 3. Deploy.
 
 The MCP endpoint is then live at `https://<your-domain>/{token}/mcp`. The dashboard falls back to `https://kindling.adhdesigns.dev` when building the MCP URL during server-side render, so change that literal in `app/page.tsx` if you deploy elsewhere.

@@ -31,6 +31,7 @@ import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 import { Sidebar, ThemeToggle, type View } from '@/components/sidebar'
 import { EmberFlare } from '@/components/ember-flare'
+import { DevelopDialog } from '@/components/develop-dialog'
 
 // The origin never changes within a page's life, so there is nothing to
 // subscribe to — this exists only to satisfy useSyncExternalStore's signature.
@@ -214,6 +215,7 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
 function SparkCard({
   spark,
   onEdit,
+  onDevelop,
   onPromote,
   onSnooze,
   onUnsnooze,
@@ -229,6 +231,7 @@ function SparkCard({
 }: {
   spark: Spark
   onEdit?: () => void
+  onDevelop?: () => void
   onPromote?: () => void
   onSnooze?: (days: number) => void
   onUnsnooze?: () => void
@@ -441,6 +444,16 @@ function SparkCard({
         {onUnarchive && (
           <button type="button" onClick={onUnarchive} className={ghost}>
             Unarchive
+          </button>
+        )}
+        {onDevelop && (
+          <button
+            type="button"
+            onClick={onDevelop}
+            title="A short guided session with Claude that ends in a sharper next step"
+            className={`${action} text-primary hover:bg-primary/10`}
+          >
+            Develop this
           </button>
         )}
         {onPromote && (
@@ -841,6 +854,7 @@ function Dashboard({
   const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
   const [editing, setEditing] = useState<Spark | null>(null)
   const [promoting, setPromoting] = useState<Spark | null>(null)
+  const [developing, setDeveloping] = useState<Spark | null>(null)
   // Bumped per promotion so back-to-back promotions each get a fresh flare.
   const [flare, setFlare] = useState<number | null>(null)
   const [recalled, setRecalled] = useState<Spark[] | null>(null)
@@ -1257,6 +1271,22 @@ function Dashboard({
     }
   }
 
+  /** The end of a Develop session: the user has reviewed and accepted the write-up. */
+  const handleDevelopSave = async (spark: Spark, content: string, nextStep: string | null) => {
+    setDeveloping(null)
+    const previous = sparks
+    setSparks((prev) =>
+      prev.map((s) => (s.id === spark.id ? { ...s, content, next_step: nextStep } : s))
+    )
+    try {
+      await patchSparkApi(token, spark.id, { content, next_step: nextStep })
+      showToast('Saved — the spark has its new write-up.')
+    } catch {
+      setSparks(previous)
+      showToast("Couldn't save the write-up — the spark is unchanged.")
+    }
+  }
+
   /** One step of the sort review. Quiet on success — the dialog moving on is the feedback. */
   const handleSort = async (spark: Spark, patch: SortPatch) => {
     const previous = sparks
@@ -1448,6 +1478,7 @@ function Dashboard({
       onToggleSelected={() => toggleSelected(spark.id)}
       onDelete={() => setConfirmDelete(spark)}
       onEdit={() => setEditing(spark)}
+      onDevelop={spark.status !== 'archived' ? () => setDeveloping(spark) : undefined}
       onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
       onToggleStanding={() => void handleToggleStanding(spark)}
       onSnooze={spark.status === 'active' ? (d) => void handleSnooze(spark, d) : undefined}
@@ -1474,6 +1505,15 @@ function Dashboard({
           knownHomes={knownHomes}
           onCancel={() => setEditing(null)}
           onSave={(patch) => void handleEdit(editing, patch)}
+        />
+      )}
+
+      {developing && (
+        <DevelopDialog
+          token={token}
+          spark={developing}
+          onClose={() => setDeveloping(null)}
+          onSave={(content, nextStep) => void handleDevelopSave(developing, content, nextStep)}
         />
       )}
 
@@ -1762,6 +1802,7 @@ function Dashboard({
                   spark={spark}
                   decayDays={decayDays}
                   onEdit={() => setEditing(spark)}
+                  onDevelop={() => setDeveloping(spark)}
                   onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
                   onArchive={() => handleArchive(spark)}
                   onSnooze={(d) => void handleSnooze(spark, d)}
