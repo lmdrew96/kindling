@@ -155,23 +155,100 @@ body {
   }
 }
 
-/* Promotion flare (components/ember-flare.tsx). Both pieces start invisible
-   and end invisible, so a cut-short run under reduced motion shows nothing. */
+/* Promotion flare (components/ember-flare.tsx). Every piece starts and ends
+   invisible, so a cut-short run shows nothing. The stage animation is the
+   longest one; its end is what unmounts the flare. */
+.ember-stage {
+  /* Flame yellows only exist inside the flare, so they live here, not in the theme. */
+  --flame-gold: #ffb347;
+  --flame-white: #ffd27a;
+  animation: ember-stage 2700ms linear forwards;
+}
+
+/* The whole screen warms from below while the flame burns. */
+.ember-wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 60%,
+    color-mix(in srgb, var(--color-hot) 38%, transparent) 0%,
+    color-mix(in srgb, var(--color-primary) 18%, transparent) 45%,
+    transparent 80%
+  );
+  opacity: 0;
+  animation: ember-wash 2200ms ease-out forwards;
+}
+
 .ember-bloom {
   position: absolute;
-  left: -90px;
-  top: -90px;
-  width: 180px;
-  height: 180px;
+  left: -200px;
+  top: -200px;
+  width: 400px;
+  height: 400px;
   border-radius: 9999px;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--color-primary) 70%, transparent) 0%,
-    color-mix(in srgb, var(--color-hot) 35%, transparent) 40%,
+    color-mix(in srgb, white 70%, var(--color-hot)) 0%,
+    color-mix(in srgb, var(--color-hot) 75%, transparent) 25%,
+    color-mix(in srgb, var(--color-primary) 35%, transparent) 50%,
     transparent 70%
   );
   opacity: 0;
-  animation: ember-bloom 900ms ease-out forwards;
+  animation: ember-bloom 1100ms ease-out forwards;
+}
+
+/* The flame: three teardrops (a square with one sharp corner, turned so the
+   point is up), hottest and smallest in front. Anchored at their base so they
+   grow upward from where the dialog was. */
+.ember-flame {
+  position: absolute;
+  bottom: -40px;
+  border-radius: 50% 0 50% 50%;
+  transform-origin: 50% 100%;
+  filter: blur(3px);
+  opacity: 0;
+  animation:
+    ember-flame-life 2000ms ease-out forwards,
+    ember-flicker 180ms ease-in-out infinite alternate;
+}
+
+.ember-flame-outer {
+  left: -80px;
+  width: 160px;
+  height: 160px;
+  background: color-mix(in srgb, var(--color-hot) 85%, transparent);
+  box-shadow: 0 0 60px 20px color-mix(in srgb, var(--color-hot) 50%, transparent);
+}
+
+.ember-flame-mid {
+  left: -55px;
+  width: 110px;
+  height: 110px;
+  background: color-mix(in srgb, var(--color-hot) 45%, var(--flame-gold));
+  animation-delay: 60ms, 90ms;
+}
+
+.ember-flame-core {
+  left: -30px;
+  width: 60px;
+  height: 60px;
+  background: color-mix(in srgb, white 75%, var(--flame-white));
+  filter: blur(2px);
+  animation-delay: 120ms, 40ms;
+}
+
+/* Sparks thrown outward at ignition. */
+.ember-spark {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 4px;
+  height: 14px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, white 40%, var(--color-hot));
+  box-shadow: 0 0 10px var(--color-hot);
+  opacity: 0;
+  animation: ember-spark 700ms cubic-bezier(0.15, 0.7, 0.3, 1) 80ms forwards;
 }
 
 .ember-mote {
@@ -179,22 +256,90 @@ body {
   left: 0;
   top: 0;
   border-radius: 9999px;
-  background: var(--color-primary);
-  box-shadow: 0 0 8px var(--color-hot);
+  background: color-mix(in srgb, white 30%, var(--color-hot));
+  box-shadow:
+    0 0 6px var(--color-hot),
+    0 0 14px color-mix(in srgb, var(--color-hot) 60%, transparent);
   opacity: 0;
-  animation: ember-rise 1100ms ease-out forwards;
+  animation: ember-rise 1300ms ease-out forwards;
+}
+
+@keyframes ember-stage {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ember-wash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes ember-bloom {
   0% {
-    transform: scale(0.2);
+    transform: scale(0.1);
     opacity: 0;
   }
-  25% {
+  15% {
     opacity: 1;
   }
   100% {
-    transform: scale(1.6);
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* The flame's arc: whoosh up taller than wide, roar, then lick upward and go
+   out. Rotation keeps the teardrop's point on top. */
+@keyframes ember-flame-life {
+  0% {
+    transform: translateY(0) rotate(-45deg) scale(0.1, 0.1);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(-30px) rotate(-45deg) scale(1.6, 1.6);
+    opacity: 1;
+  }
+  55% {
+    transform: translateY(-50px) rotate(-45deg) scale(1.4, 1.4);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(-180px) rotate(-45deg) scale(0.2, 0.2);
+    opacity: 0;
+  }
+}
+
+/* Layered on top of the life animation via `translate`/`scale`-free props so
+   the two don't fight over transform. */
+@keyframes ember-flicker {
+  0% {
+    filter: blur(3px) brightness(1);
+    margin-left: -3px;
+  }
+  100% {
+    filter: blur(4px) brightness(1.25);
+    margin-left: 3px;
+  }
+}
+
+@keyframes ember-spark {
+  0% {
+    transform: rotate(var(--angle)) translateY(0) scaleY(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--angle)) translateY(calc(var(--reach) * -1)) scaleY(0.3);
     opacity: 0;
   }
 }
@@ -204,11 +349,14 @@ body {
     transform: translate(0, 0) scale(1);
     opacity: 0;
   }
-  15% {
+  10% {
     opacity: 1;
   }
+  50% {
+    transform: translate(calc(var(--dx) * 0.4), calc(var(--rise) * 0.45)) scale(0.9);
+  }
   100% {
-    transform: translate(var(--dx), -150px) scale(0.3);
+    transform: translate(var(--dx), var(--rise)) scale(0.2);
     opacity: 0;
   }
 }
