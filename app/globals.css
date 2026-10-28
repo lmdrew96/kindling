@@ -123,6 +123,17 @@ body {
   border-radius: 0.375rem;
 }
 
+/* iOS zooms the page into any field whose text is under 16px, and the app's
+   fields are text-sm. Touch screens only, so desktop keeps the smaller size.
+   Unlayered, so it beats Tailwind's layered text-* utilities. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Respect the OS setting. Transitions become instant rather than disappearing,
    so state changes still read as changes. */
 @media (prefers-reduced-motion: reduce) {
