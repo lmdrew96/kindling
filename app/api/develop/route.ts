@@ -3,6 +3,7 @@ import { z } from 'zod'
 import * as z4 from 'zod/v4'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { isRateLimited } from '@/lib/auth'
 import { getSpark } from '@/lib/sparks'
 import { KIND_LABELS, type Spark } from '@/lib/types'
 
@@ -11,6 +12,13 @@ export const runtime = 'nodejs'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const MODEL = 'claude-sonnet-5-5'
+
+/**
+ * Calls per token per hour. A session is roughly 4–6 calls, so this allows
+ * several sessions an hour while keeping a leaked token from looping the
+ * Anthropic bill.
+ */
+const CALLS_PER_HOUR = 30
 
 /** Generous for a 15-minute session; a cap so one request can't grow without bound. */
 const MAX_TURNS = 40
@@ -82,6 +90,13 @@ export async function POST(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token')
   if (!token || !UUID_RE.test(token)) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+  }
+
+  if (await isRateLimited('develop', token, CALLS_PER_HOUR, 60 * 60)) {
+    return NextResponse.json(
+      { error: "You've hit the hourly limit for Develop sessions. Try again in an hour." },
+      { status: 429 }
+    )
   }
 
   const parsed = Body.safeParse(await req.json())
