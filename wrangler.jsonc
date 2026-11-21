@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kindling",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  // global_fetch_strictly_public: fetch() to our own hostname goes out through
+  // the edge instead of looping back into the Worker. Required by OpenNext.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Wrangler's default esbuild keepNames injects a __name helper that breaks
+  // any library that stringifies a function into the HTML. Same fix as
+  // ControlledChaos. Needs wrangler >= 4.13.0.
+  "keep_names": false,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // MUST stay true. Declaring `routes` flips workers_dev to false on the next
+  // deploy unless it is set explicitly, which kills the *.workers.dev URL.
+  "workers_dev": true,
+  // Same hostname as on Vercel, so the claude.ai connector URLs keep working.
+  "routes": [
+    {
+      "pattern": "kindling.adhdesigns.dev",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

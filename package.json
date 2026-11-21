@@ -1,18 +1,22 @@
 {
   "name": "kindling",
-  "version": "0.37.3",
+  "version": "0.38.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "opennextjs-cloudflare build",
     "start": "next start",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "next:build": "next build",
+    "cf:preview": "pnpm build && opennextjs-cloudflare preview",
+    "cf:deploy": "pnpm build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@noble/hashes": "^2.4.0",
     "@upstash/redis": "^1.34.9",
-    "next": "^16.2.2",
+    "next": "^16.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
@@ -22,15 +26,17 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.18",
     "@tailwindcss/postcss": "^4.1.7",
     "@types/node": "^22.15.18",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.4",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.5",
+    "eslint-config-next": "^16.4.6",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.7",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wrangler": "^4.166.0"
   }
 }

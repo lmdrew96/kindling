@@ -1,3 +1,5 @@
+import { pbkdf2Async } from '@noble/hashes/pbkdf2.js'
+import { sha256 } from '@noble/hashes/sha2.js'
 import { redis } from './redis'
 
 /**
@@ -79,7 +81,11 @@ export const publicAccount = (a: Account): PublicAccount => ({
 
 // ─── Password hashing ────────────────────────────────────────────────────────
 
-const PBKDF2_ITERATIONS = 600_000
+// Workers refuses native PBKDF2 above 100k iterations ("Pbkdf2 failed:
+// iteration counts above 100000 are not supported"), so new hashes use 100k.
+// Older 600k records still verify through the pure-JS fallback in derive().
+const PBKDF2_ITERATIONS = 100_000
+const NATIVE_PBKDF2_MAX = 100_000
 const PBKDF2_HASH = 'SHA-256'
 const SALT_BYTES = 16
 const KEY_BYTES = 32
@@ -97,6 +103,11 @@ const derive = async (
   iterations: number,
   hash: string
 ): Promise<ArrayBuffer> => {
+  if (iterations > NATIVE_PBKDF2_MAX) {
+    if (hash !== 'SHA-256') throw new Error(`Unsupported PBKDF2 hash: ${hash}`)
+    const out = await pbkdf2Async(sha256, password, salt, { c: iterations, dkLen: KEY_BYTES })
+    return out.buffer as ArrayBuffer
+  }
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
@@ -230,7 +241,10 @@ const rateId = async (id: string): Promise<string> => {
   return Buffer.from(new Uint8Array(digest)).toString('hex').slice(0, 32)
 }
 
+// Cloudflare sets CF-Connecting-IP to the real client; x-forwarded-for is the
+// fallback for local dev.
 export const clientIp = (req: Request): string =>
+  req.headers.get('cf-connecting-ip') ||
   req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
   req.headers.get('x-real-ip') ||
   'unknown'

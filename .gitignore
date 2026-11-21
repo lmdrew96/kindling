@@ -34,3 +34,9 @@ Thumbs.db
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# cloudflare
+.open-next
+.wrangler
+# local secrets for `wrangler dev`: never committed
+.dev.vars

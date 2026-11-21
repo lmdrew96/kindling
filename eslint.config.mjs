@@ -8,7 +8,7 @@ import nextTypescript from 'eslint-config-next/typescript'
  */
 const config = [
   {
-    ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts', 'tsconfig.tsbuildinfo'],
+    ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.open-next/**', '.wrangler/**'],
   },
   ...nextCoreWebVitals,
   ...nextTypescript,
