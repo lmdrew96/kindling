@@ -34,7 +34,7 @@ export function StatsPanel({
       className="rounded-xl border border-border bg-surface p-4 space-y-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display text-sm font-bold text-fg">Your sparks</h2>
+        <h2 className="font-display text-sm text-fg">Your sparks</h2>
         <button
           type="button"
           onClick={onClose}
@@ -108,7 +108,7 @@ export function StatsPanel({
           counts next to each other is what makes fragmentation visible, and
           this is already the panel that shows the shape of the store. */}
       <div className="border-t border-border pt-3 space-y-2">
-        <h3 className="font-display text-xs font-bold text-fg">Tags</h3>
+        <h3 className="font-display text-xs text-fg">Tags</h3>
         <TagManager sparks={sparks} onRename={onRenameTag} onRemove={onRemoveTag} />
       </div>
     </section>
@@ -128,7 +128,7 @@ function Stat({
     <div className="rounded-lg border border-border bg-bg px-3 py-2">
       <dt className="text-xs text-fg-subtle">{label}</dt>
       <dd
-        className={`font-display text-xl font-bold ${
+        className={`font-display text-xl ${
           tone === 'primary' ? 'text-primary' : 'text-fg'
         }`}
       >

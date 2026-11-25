@@ -47,7 +47,7 @@ export function ForgetTokenDialog({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md space-y-4 rounded-xl border border-border-strong bg-surface p-5"
       >
-        <h2 id="forget-title" className="font-display text-lg font-bold text-fg">
+        <h2 id="forget-title" className="font-display text-lg text-fg">
           Save your token first
         </h2>
 

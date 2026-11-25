@@ -1,119 +1,293 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Kindling theme tokens — "ember"
+   Kindling theme tokens — "Matchbook"
 
-   Kindling's own identity rather than the house theme half-applied: charcoal-
-   plum surfaces, warm off-white text, and one ember accent reserved for the
-   thing to do (primary action, active state, focus). Hot/cold exist only for
-   the card heat rail.
+   Fire-first. Soot-brown surfaces, ember-warm off-white text, and the flame
+   itself as the accent: orange for the thing to do, gold for the next step
+   and for counts. The page glows like a bed of coals from the bottom edge.
 
-   Depth comes from three surface steps plus hairline borders — page < panel <
-   raised card — not from tinting everything purple.
+   Depth is five surface steps plus hairline borders — page < panel < surface
+   < card < hover/chip. Cards carry their heat as a glow and a matchbox-label
+   inner rule (see .spark-card below), never as a left-border rail.
 
    Every text token was checked with WCAG luminance math on opaque hex (the
-   script self-tests against a known pair first). Ratios are "on bg / panel /
-   raised / hover". hover is the darkest-contrast surface a text token ever
-   sits on, so it is the binding constraint.
+   script self-tests against black/white = 21 and #777/white = 4.48 first).
+   Ratios are "on bg / panel / surface / card / hover". hover is the darkest-
+   contrast surface a text token ever sits on, so it is the binding constraint.
+   Tinted fills (bg-primary/15 chips, the Next ▸ box) were checked composited
+   onto the surface beneath them, never as raw rgba.
    ───────────────────────────────────────────────────────────────────────── */
 
 @theme {
-  /* Surfaces. Each step is ~1.1:1 from the last and carries a hairline border,
-     which is what makes the step read rather than the luminance alone. */
-  --color-bg: #141018; /* page                        */
-  --color-surface: #1f1824; /* panel: sidebar, composer  */
-  --color-surface-raised: #2b2232; /* cards                 */
-  --color-surface-hover: #372c3f; /* hover on raised, chips */
-  --color-border: rgb(255 240 225 / 0.08); /* hairline           */
-  --color-border-strong: rgb(255 240 225 / 0.16);
+  /* Surfaces. */
+  --color-bg: #120d0b; /* page                          */
+  --color-panel: #170f0c; /* sidebar, bottom nav         */
+  --color-surface: #1d1512; /* inputs, panels, dialogs   */
+  --color-surface-raised: #231914; /* cards              */
+  --color-surface-hover: #33241d; /* hover, chips        */
+  --color-border: rgb(255 190 140 / 0.1); /* hairline     */
+  --color-border-strong: rgb(255 190 140 / 0.2);
 
-  /* Foreground ramp, one warm hue. fg-subtle is the floor: 4.81 on hover. */
-  --color-fg: #f3e9dc; /* 15.67 / 14.41 / 12.70 / 10.98 */
-  --color-fg-muted: #cbbdad; /* 10.22 /  9.41 /  8.29 /  7.16 */
-  --color-fg-subtle: #a89a8c; /*  6.86 /  6.31 /  5.56 /  4.81 — do not go dimmer */
+  /* Foreground ramp. fg-subtle is the floor: 5.25 on hover. */
+  --color-fg: #fbeee0; /* 16.92 / 16.58 / 15.76 / 15.08 / 13.05 */
+  --color-fg-muted: #d8c2ae; /* 11.26 / 11.03 / 10.48 / 10.03 /  8.68 */
+  --color-fg-subtle: #ad9583; /*  6.80 /  6.67 /  6.34 /  6.07 /  5.25 — do not go dimmer */
 
-  /* Ember. Fill takes the page colour as its label (8.80); hover lightens the
-     fill and keeps the dark label (10.75). Safe as accent text everywhere. */
-  --color-primary: #f0a04b;
-  --color-primary-hover: #f5b878;
-  --color-on-primary: #141018;
+  /* Flame as TEXT and tints: accent links, active states, primary/15 chips.
+     7.45 / 7.30 / 6.94 / 6.64 / 5.75; 5.40 on its own /15 tint. */
+  --color-primary: #ff7b22;
+  --color-primary-hover: #ff9447; /* 6.79 on hover */
 
-  /* Heat-rail endpoints. Used only by the card rail — never as text. */
-  --color-hot: #e8643c;
-  --color-cold: #6c84a8; /* also cold-status borders/fills */
-  --color-cold-text: #9fb3cf; /* 8.69 / 8.00 / 7.23 / 6.35 — cold labels */
+  /* Flame as a FILL: primary buttons, the Blazing kind banner. Kept bright in
+     both modes; only the label flips. Label 7.45, 8.80 on the hover fill. */
+  --color-flame: #ff7b22;
+  --color-flame-hover: #ff9447;
+  --color-on-flame: #120d0b;
+  --color-flame-glow: rgb(255 123 34 / 0.4); /* primary button halo */
 
-  /* Tag chips: quiet and neutral, so tags stop competing with the idea. */
-  --color-tag-bg: #372c3f;
-  --color-tag-fg: #cbbdad; /* 7.16 */
+  /* Gold: the Next ▸ label and counts. 11.98 / … / 9.24 on hover. */
+  --color-gold: #ffc23d;
+  --color-gold-hover: #ffd877; /* links */
+  /* Soft orange for outline-button labels (Rekindle). 10.79 / … / 8.32. */
+  --color-flame-soft: #ffb07a;
 
-  /* Error. A warm coral that sits with the ember. */
-  --color-danger: #ff9f8f; /* 9.39 / 8.64 / 7.81 / 6.85 */
+  /* Red flare: decorative only (promotion flare), never text. */
+  --color-hot: #ef4a2f;
+  /* Ash: gone-cold borders and fills, and cold labels (same as subtle). */
+  --color-cold: #8f7e74;
+  --color-cold-text: #ad9583; /* 5.25 on hover */
 
-  /* Focus. Ember on the page is 8.70. */
-  --color-ring: #f0a04b;
+  /* Tag chips: quiet, so tags stop competing with the idea. 8.68. */
+  --color-tag-bg: #33241d;
+  --color-tag-fg: #d8c2ae;
 
-  --font-sans: var(--font-raela), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-kineks), var(--font-raela), ui-sans-serif, sans-serif;
+  /* Next ▸ box. Composited on a card: gold label 8.97, step text 12.66. */
+  --color-next-bg: rgb(255 194 61 / 0.08);
+  --color-next-border: rgb(255 194 61 / 0.28);
+
+  /* Error. A coral that sits with the flame. 9.75 / … / 7.52. */
+  --color-danger: #ff9f8f;
+
+  /* Focus. 7.45 on the page. */
+  --color-ring: #ff7b22;
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-alfa-slab), var(--font-archivo), ui-serif, serif;
+  --font-label: var(--font-archivo-narrow), var(--font-archivo), ui-sans-serif, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Values that aren't Tailwind colours: the coal glow, the wordmark halo and
+   the card heat states. Same light override below. */
+:root {
+  color-scheme: dark;
+
+  --page-glow: radial-gradient(120% 60% at 50% 115%, #3a1608 0%, #1a0f0b 45%, #120d0b 70%);
+  --wordmark-glow: 0 0 18px rgb(255 123 34 / 0.45);
+
+  /* Heat. Decorative reinforcement: a card's age text and status already say
+     the same thing, so none of these carry meaning alone. Banner pairs are
+     text, and pass: Blazing 7.45, Smoldering 8.49, Burning low 8.68. */
+  --heat-blazing-outer: #ff7b22;
+  --heat-blazing-inner: #ffc23d;
+  --heat-blazing-glow: 0 0 0 1px rgb(255 123 34 / 0.55), 0 0 28px rgb(255 100 30 / 0.28);
+  --heat-blazing-rule: rgb(255 170 90 / 0.3);
+  --heat-blazing-banner-bg: #ff7b22;
+  --heat-blazing-banner-fg: #120d0b;
+
+  --heat-smoldering-outer: #c8552a;
+  --heat-smoldering-inner: #e89a3a;
+  --heat-smoldering-glow: 0 0 0 1px rgb(200 85 42 / 0.45), 0 0 14px rgb(200 85 42 / 0.15);
+  --heat-smoldering-rule: rgb(255 170 90 / 0.18);
+  --heat-smoldering-banner-bg: #5a2a17;
+  --heat-smoldering-banner-fg: #ffd2b0;
+
+  --heat-low-outer: #6b5446;
+  --heat-low-inner: #8f7e74;
+  --heat-low-glow: 0 0 0 1px rgb(255 190 140 / 0.12);
+  --heat-low-rule: rgb(255 190 140 / 0.12);
+  --heat-low-banner-bg: #33241d;
+  --heat-low-banner-fg: #d8c2ae;
+
+  --heat-cold-stroke: #8f7e74;
+  --heat-cold-glow: 0 0 0 1px rgb(143 126 116 / 0.25);
+  --heat-cold-rule: rgb(255 190 140 / 0.08);
+
+  --heat-stick: #6b5446;
+  --match-stick: #c9a27a;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
-   Light — the same ember identity in daylight: warm paper surfaces, plum-
-   charcoal text, and the ember burnt darker so it still reads as text. Cards
-   are the lightest step here (they lift off the page); the panel sits just
-   below the page. Same audit as above, same "bg / panel / raised / hover"
-   order; hover is still the binding surface.
+   Ash — light. Cool ash-grey paper, soot text, and the flame burnt darker
+   wherever it is TEXT; fills stay bright orange and take a soot label. Cards
+   are the lightest step (they lift off the page); panel and chip share the
+   darkest step, which is the binding surface. Same audit, same order:
+   "bg / panel / surface / card / hover".
+
+   Three spec values were nudged darker to clear 4.5 on the panel/chip step
+   (#dcd8d5), because the sidebar puts them there: subtle #6a5d56 → #685b54,
+   gold #8a5a00 → #815400, danger #b0322a → #ab3129. primary went #a63c0c →
+   #a03a0b so the selected-chip tint (primary/15 on surface) clears 4.5 too.
 
    data-theme is the RESOLVED mode — lib/theme.ts turns "system" into light or
    dark before paint — so this is the only light block.
    ───────────────────────────────────────────────────────────────────────── */
 
-:root {
-  color-scheme: dark;
-}
-
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --color-bg: #f6efe6;
-  --color-surface: #efe6da;
-  --color-surface-raised: #fcf8f3;
-  --color-surface-hover: #e6dacb;
-  --color-border: rgb(60 30 45 / 0.1);
-  --color-border-strong: rgb(60 30 45 / 0.2);
+  --color-bg: #e7e5e4;
+  --color-panel: #dcd8d5;
+  --color-surface: #f1efee;
+  --color-surface-raised: #f8f6f5;
+  --color-surface-hover: #dcd8d5;
+  --color-border: rgb(60 40 30 / 0.1);
+  --color-border-strong: rgb(60 40 30 / 0.22);
 
-  --color-fg: #231a28; /* 14.73 / 13.60 / 15.89 / 12.21 */
-  --color-fg-muted: #4f4248; /*  8.35 /  7.71 /  9.01 /  6.92 */
-  --color-fg-subtle: #6b5c58; /*  5.58 /  5.16 /  6.02 /  4.63 — do not go dimmer */
+  --color-fg: #1d1714; /* 14.12 / 12.51 / 15.46 / 16.45 / 12.51 */
+  --color-fg-muted: #4a3f3a; /*  8.11 /  7.19 /  8.88 /  9.45 /  7.19 */
+  --color-fg-subtle: #685b54; /*  5.21 /  4.61 /  5.70 /  6.06 /  4.61 — do not go dimmer */
 
-  /* Ember as text needs to be this dark to clear 4.5 on hover (5.09). The fill
-     takes the raised card colour as its label (6.62; 8.79 on hover). */
-  --color-primary: #8f440b;
-  --color-primary-hover: #733608;
-  --color-on-primary: #fcf8f3;
+  --color-primary: #a03a0b; /* 5.39 / 4.78 / 5.90 / 6.28 / 4.78; 4.71 on its /15 tint */
+  --color-primary-hover: #85300a; /* 6.90 / 6.12 / 7.56 / 8.04 */
 
-  --color-hot: #d9572e;
-  --color-cold: #6c84a8;
-  --color-cold-text: #3d5980; /* 6.26 / 5.78 / 6.76 / 5.19 */
+  --color-flame: #ff7b22;
+  --color-flame-hover: #ff9447;
+  --color-on-flame: #1d1714; /* 6.84; 8.08 on the hover fill */
+  --color-flame-glow: rgb(255 123 34 / 0.4);
 
-  --color-tag-bg: #e6dacb;
-  --color-tag-fg: #4f4248; /* 6.92 */
+  --color-gold: #815400; /* 5.22 / 4.63 / … — links and Next ▸ label */
+  --color-gold-hover: #6b4500; /* 5.99 on panel/chip */
+  --color-flame-soft: #a03a0b;
 
-  --color-danger: #b0322a; /* 5.52 / 5.10 / 5.95 / 4.57 */
+  --color-hot: #ef4a2f;
+  --color-cold: #8f7e74;
+  --color-cold-text: #685b54; /* 4.61 on panel/chip */
 
-  --color-ring: #8f440b;
+  --color-tag-bg: #dcd8d5;
+  --color-tag-fg: #4a3f3a; /* 7.19 */
+
+  /* Composited on a card: gold label 5.65, step text 15.27. */
+  --color-next-bg: rgb(255 194 61 / 0.18);
+  --color-next-border: rgb(138 90 0 / 0.35);
+
+  --color-danger: #ab3129; /* 5.22 / 4.63 / 5.70 / 6.06 / 4.63 */
+
+  --color-ring: #a03a0b;
+
+  --page-glow: radial-gradient(120% 60% at 50% 115%, #f2c6a4 0%, #ebe0d9 42%, #e7e5e4 70%);
+  --wordmark-glow: none;
+
+  --heat-blazing-rule: rgb(166 60 12 / 0.3);
+  --heat-blazing-banner-fg: #1d1714; /* 6.84 */
+  --heat-smoldering-rule: rgb(166 60 12 / 0.18);
+  --heat-smoldering-banner-bg: #f3d3c2;
+  --heat-smoldering-banner-fg: #6b2a12; /* 7.59 */
+  --heat-low-glow: 0 0 0 1px rgb(60 40 30 / 0.12);
+  --heat-low-rule: rgb(60 40 30 / 0.12);
+  --heat-low-banner-bg: #dcd8d5;
+  --heat-low-banner-fg: #4a3f3a; /* 7.19 */
+  --heat-cold-rule: rgb(60 40 30 / 0.08);
 }
 
 html {
   background: var(--color-bg);
 }
 
+/* The coal glow sits behind everything. Fixed so it stays at the bottom of
+   the viewport rather than the bottom of a long list (iOS ignores fixed and
+   scrolls it, which is fine). */
 body {
-  background: var(--color-bg);
+  min-height: 100vh;
+  background: var(--page-glow), var(--color-bg);
+  background-attachment: fixed;
   color: var(--color-fg);
   font-family: var(--font-sans);
 }
+
+/* Alfa Slab One ships one weight. Never let the browser smear a faux bold. */
+.font-display {
+  font-weight: 400;
+  font-synthesis: none;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--color-primary);
+  text-shadow: var(--wordmark-glow);
+}
+
+/* ─── Spark cards: heat ───────────────────────────────────────────────────────
+   data-heat comes from sparkHeat (the neglect term inverted — NOT scoreSpark,
+   which runs high for the stalest sparks) painted along heatEmphasis. Cards
+   with no heat (standing, snoozed, archived) get the hairline and no flame;
+   promoted cards wear gold. */
+.spark-card {
+  --heat-glow: 0 0 0 1px var(--color-border);
+  --heat-rule: var(--color-border);
+  --heat-banner-bg: var(--color-tag-bg);
+  --heat-banner-fg: var(--color-tag-fg);
+  --heat-outer: var(--heat-low-outer);
+  --heat-inner: var(--heat-low-inner);
+  --heat-stroke: none;
+  box-shadow: var(--heat-glow);
+}
+
+/* The matchbox-label inner rule. */
+.spark-card::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--heat-rule);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.spark-card[data-heat='blazing'] {
+  --heat-glow: var(--heat-blazing-glow);
+  --heat-rule: var(--heat-blazing-rule);
+  --heat-banner-bg: var(--heat-blazing-banner-bg);
+  --heat-banner-fg: var(--heat-blazing-banner-fg);
+  --heat-outer: var(--heat-blazing-outer);
+  --heat-inner: var(--heat-blazing-inner);
+}
+
+.spark-card[data-heat='smoldering'] {
+  --heat-glow: var(--heat-smoldering-glow);
+  --heat-rule: var(--heat-smoldering-rule);
+  --heat-banner-bg: var(--heat-smoldering-banner-bg);
+  --heat-banner-fg: var(--heat-smoldering-banner-fg);
+  --heat-outer: var(--heat-smoldering-outer);
+  --heat-inner: var(--heat-smoldering-inner);
+}
+
+.spark-card[data-heat='low'] {
+  --heat-glow: var(--heat-low-glow);
+  --heat-rule: var(--heat-low-rule);
+  --heat-banner-bg: var(--heat-low-banner-bg);
+  --heat-banner-fg: var(--heat-low-banner-fg);
+}
+
+.spark-card[data-heat='cold'] {
+  --heat-glow: var(--heat-cold-glow);
+  --heat-rule: var(--heat-cold-rule);
+  --heat-banner-bg: var(--heat-low-banner-bg);
+  --heat-banner-fg: var(--heat-low-banner-fg);
+  --heat-outer: none;
+  --heat-inner: none;
+  --heat-stroke: var(--heat-cold-stroke);
+}
+
+.spark-card[data-heat='promoted'] {
+  --heat-glow: 0 0 0 1px color-mix(in srgb, var(--color-gold) 45%, transparent);
+  --heat-rule: color-mix(in srgb, var(--color-gold) 30%, transparent);
+  --heat-outer: var(--heat-blazing-outer);
+  --heat-inner: var(--heat-blazing-inner);
+}
+
 
 /* Every interactive element gets a visible keyboard focus ring. The app sets
    outline-none on inputs for styling; this puts the affordance back. */
@@ -147,22 +321,27 @@ body {
   }
 }
 
-/* The heat rail is decorative reinforcement — a spark's age text and its
-   status tab already carry the same fact. At raised contrast the interpolated
-   middle of the ramp is the first thing to become ambiguous, so collapse it to
-   the two audited endpoints plus a neutral middle. The rail colour is inline
-   style, so overriding it needs !important. */
+/* Heat is decorative reinforcement — a spark's age text and its status
+   already carry the same fact. At raised contrast, soft glows and faint inner
+   rules are the first things to vanish, so trade them for solid 2px edges in
+   the flame colours, plus a solid rule for every card. */
 @media (prefers-contrast: more) {
-  [data-heat='warm'] {
-    border-left-color: var(--color-hot) !important;
+  .spark-card,
+  .spark-card[data-heat] {
+    --heat-glow: 0 0 0 2px var(--color-border-strong);
+    --heat-rule: var(--color-border-strong);
   }
 
-  [data-heat='cooling'] {
-    border-left-color: var(--color-fg-subtle) !important;
+  .spark-card[data-heat='blazing'] {
+    --heat-glow: 0 0 0 2px var(--color-flame);
   }
 
-  [data-heat='cold'] {
-    border-left-color: var(--color-cold) !important;
+  .spark-card[data-heat='smoldering'] {
+    --heat-glow: 0 0 0 2px var(--heat-smoldering-outer);
+  }
+
+  .spark-card[data-heat='cold'] {
+    --heat-glow: 0 0 0 2px var(--color-cold);
   }
 }
 

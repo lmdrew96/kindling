@@ -713,13 +713,13 @@ A malformed token short-circuits before any JSON-RPC handling and returns a plai
 
 A single-page client component at `app/page.tsx`. All color comes from theme tokens defined in `app/globals.css` — the component contains no hardcoded color values.
 
-**Palette:** Eventide Lilac `#4C3E70` (cards), the same deepened ~30% to `#352B4E` (page), Light Marigold `#F0BC3E` (primary/CTA), Aqua Whisper `#309FAF` (cold sparks), Aqua Gleam `#0A3D46` (tag pills), Plush Topaz `#A87324` (hover/pressed gold). The foreground ramp is ADHDesigns Bone `#EDE6D2` mixed toward the card color.
+**Theme: Matchbook.** Fire-first dark by default: soot-brown surfaces (`#120d0b` page → `#231914` cards), a coal glow along the bottom edge, flame orange `#ff7b22` for the thing to do and gold `#ffc23d` for the next step, links and counts. **Ash** is the light mode: ash-grey paper with the flame darkened wherever it is text (`#a03a0b`, gold `#815400`) and kept bright wherever it is a fill. A light/dark/system toggle lives in the sidebar.
 
-The page is a deepened lilac rather than the palette color itself because pure `#4C3E70` as a full-page background leaves almost no contrast headroom — marigold on cards falls to 4.63 and no Aqua Whisper tint clears AA. Deepening the page and promoting `#4C3E70` to the card surface restores the ramp, and puts the named purple on every card rather than only on tag pills.
+Spark cards show heat as four states (Blazing, Smoldering, Burning low, Gone cold), each with a flame glyph, glow, matchbox inner rule and heat-coloured kind banner. Heat comes from `sparkHeat` (the neglect term inverted), never `scoreSpark`, which is recall priority and runs high for the stalest sparks.
 
-Every pairing is contrast-checked and the ratios are documented inline in `globals.css` as "on page / on card". The card is the lighter of the two, so it's the binding constraint and every text token is verified against it. Two limits the token names encode: Plush Topaz fails as text on either surface, so it's fill-and-border only; Aqua Whisper is 3.01 on a card — fine for icons, borders and large text but not small text, which is why `--color-cold-text` exists as a lightened tint (4.80).
+Every text token is contrast-checked on opaque hex and the ratios are documented inline in `globals.css` as "on bg / panel / surface / card / hover". Hover is the binding surface.
 
-Type is Raela Grotesque for body and Kineks Round for display, loaded from `branding/fonts/` via `next/font/local`.
+Type is Alfa Slab One for display, Archivo for body and Archivo Narrow for labels, all via `next/font/google` with `latin-ext` so Romanian diacritics render in the real face.
 
 **Token gate** — first visit offers two paths: generate a fresh token, or paste an existing one to load a namespace on another device. Either way it's persisted to `localStorage` and the gate doesn't reappear.
 
@@ -778,7 +778,7 @@ kindling/
 │   ├── page.tsx               # Token gate + dashboard (client component)
 │   ├── layout.tsx             # Root layout and metadata
 │   └── globals.css            # Tailwind v4 @theme — all color/type tokens
-├── branding/fonts/            # Raela Grotesque + Kineks Round (local fonts)
+├── branding/fonts/            # Raela Grotesque + Kineks Round (previous theme, unused)
 ├── lib/
 │   ├── sparks.ts              # CRUD, recall scoring, decay — the core logic
 │   ├── mcp-server.ts          # MCP server — JSON-RPC, tool descriptions, handlers

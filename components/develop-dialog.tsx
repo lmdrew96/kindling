@@ -139,7 +139,7 @@ export function DevelopDialog({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="develop-title" className="font-display text-lg font-bold text-fg">
+            <h2 id="develop-title" className="font-display text-lg text-fg">
               Develop this
             </h2>
             <p className="truncate text-xs text-fg-muted">{displayTitle(spark)}</p>

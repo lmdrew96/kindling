@@ -7,7 +7,7 @@ export const BTN_GHOST =
   'rounded-lg bg-transparent border border-border-strong text-fg-muted hover:bg-surface-hover hover:text-fg transition-colors cursor-pointer'
 
 export const BTN_PRIMARY =
-  'rounded-lg font-semibold cursor-pointer bg-primary text-on-primary hover:bg-primary-hover transition-colors disabled:opacity-40 disabled:hover:bg-primary disabled:hover:text-on-primary'
+  'rounded-lg font-semibold cursor-pointer bg-flame text-on-flame hover:bg-flame-hover shadow-[0_0_24px_var(--color-flame-glow)] transition-colors disabled:opacity-40 disabled:shadow-none disabled:hover:bg-flame'
 
 /** The token is a v4 UUID; it is also the entire account. */
 export const UUID_RE =

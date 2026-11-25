@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { readTheme, subscribeTheme, writeTheme, type ThemePref } from '@/lib/theme'
+import { MatchMark } from '@/components/flame'
 
 export type View = 'sparks' | 'stats' | 'connect' | 'help' | 'account'
 
@@ -166,13 +167,14 @@ export function Sidebar({
       {/* Desktop: a left rail that collapses to icons. */}
       <aside
         aria-label="Kindling"
-        className={`hidden md:flex sticky top-0 h-screen shrink-0 flex-col border-r border-border bg-surface transition-[width] motion-reduce:transition-none ${
+        className={`hidden md:flex sticky top-0 h-screen shrink-0 flex-col border-r border-border bg-panel transition-[width] motion-reduce:transition-none ${
           collapsed ? 'w-16' : 'w-56'
         }`}
       >
         <div className={`flex items-center py-5 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
           {!collapsed && (
-            <span className="font-display text-2xl font-bold tracking-tight text-primary">
+            <span className="wordmark flex items-center gap-2 text-[1.75rem] leading-none">
+              <MatchMark />
               Kindling
             </span>
           )}
@@ -263,7 +265,7 @@ export function Sidebar({
       {/* Small screens: the same destinations as a bottom bar. */}
       <nav
         aria-label="Kindling"
-        className="md:hidden fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-border bg-surface px-1 pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-border bg-panel px-1 pb-[env(safe-area-inset-bottom)]"
       >
         {[...NAV, accountItem].map((item) => (
           <button

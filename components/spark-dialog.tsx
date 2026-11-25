@@ -37,7 +37,7 @@ export function Shell({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg space-y-4 rounded-xl border border-border-strong bg-surface p-5"
       >
-        <h2 id={labelledBy} className="font-display text-lg font-bold text-fg">
+        <h2 id={labelledBy} className="font-display text-lg text-fg">
           {title}
         </h2>
         {children}

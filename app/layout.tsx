@@ -1,35 +1,27 @@
 import type { Metadata, Viewport } from 'next'
-import localFont from 'next/font/local'
-import { Geist_Mono } from 'next/font/google'
+import { Alfa_Slab_One, Archivo, Archivo_Narrow, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { THEME_SCRIPT } from '@/lib/theme'
 
-const raelaGrotesque = localFont({
-  variable: '--font-raela',
+// Matchbook type. latin-ext on all three, so Romanian (ă, ș, ț) renders in
+// the real face rather than a fallback.
+const alfaSlab = Alfa_Slab_One({
+  variable: '--font-alfa-slab',
+  weight: '400',
+  subsets: ['latin', 'latin-ext'],
   display: 'swap',
-  src: [
-    { path: '../branding/fonts/RaelaGrotesqueThin-ovpea.ttf', weight: '100', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueExtraLight-4nYxx.ttf', weight: '200', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueLight-0v1ER.ttf', weight: '300', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueRegular-e9476.ttf', weight: '400', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueMedium-WprDE.ttf', weight: '500', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueSemiBold-aY5KR.ttf', weight: '600', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueBold-E4Omn.ttf', weight: '700', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueExtraBold-OGgW4.ttf', weight: '800', style: 'normal' },
-    { path: '../branding/fonts/RaelaGrotesqueBlack-Zp21m.ttf', weight: '900', style: 'normal' },
-  ],
 })
 
-const kineksRound = localFont({
-  variable: '--font-kineks',
+const archivo = Archivo({
+  variable: '--font-archivo',
+  subsets: ['latin', 'latin-ext'],
   display: 'swap',
-  src: [
-    { path: '../branding/fonts/KineksRoundLight-KVe8X.otf', weight: '300', style: 'normal' },
-    { path: '../branding/fonts/KineksRoundRegular-vnPJ9.otf', weight: '400', style: 'normal' },
-    { path: '../branding/fonts/KineksRoundMedium-2vyGo.otf', weight: '500', style: 'normal' },
-    { path: '../branding/fonts/KineksRoundSemiBold-woLx6.otf', weight: '600', style: 'normal' },
-    { path: '../branding/fonts/KineksRoundBold-MAlrP.otf', weight: '700', style: 'normal' },
-  ],
+})
+
+const archivoNarrow = Archivo_Narrow({
+  variable: '--font-archivo-narrow',
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
 })
 
 // Metadata, counts and timestamps — the quiet machine voice under the idea.
@@ -45,7 +37,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#141018',
+  themeColor: '#120d0b',
 }
 
 export default function RootLayout({
@@ -60,7 +52,7 @@ export default function RootLayout({
       lang="en"
       data-theme="dark"
       suppressHydrationWarning
-      className={`${raelaGrotesque.variable} ${kineksRound.variable} ${geistMono.variable}`}
+      className={`${alfaSlab.variable} ${archivo.variable} ${archivoNarrow.variable} ${geistMono.variable}`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />

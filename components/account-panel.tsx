@@ -58,7 +58,7 @@ export function AccountPanel({
       className="rounded-xl border border-border bg-surface p-4 space-y-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display text-sm font-bold text-fg">
+        <h2 className="font-display text-sm text-fg">
           {account ? 'Your account' : 'Save your sparks to an account'}
         </h2>
         <button

@@ -27,7 +27,7 @@ export function HelpPanel({
       className="space-y-4 rounded-xl border border-border bg-surface p-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display text-sm font-bold text-fg">
+        <h2 className="font-display text-sm text-fg">
           {section === 'connect' ? 'Connect to Claude' : 'How Kindling works'}
         </h2>
         <button

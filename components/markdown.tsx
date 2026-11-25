@@ -32,13 +32,13 @@ export function Markdown({
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h3 className="font-display text-base font-bold text-fg mt-3 first:mt-0">{children}</h3>
+            <h3 className="font-display text-base text-fg mt-3 first:mt-0">{children}</h3>
           ),
           h2: ({ children }) => (
-            <h3 className="font-display text-sm font-bold text-fg mt-3 first:mt-0">{children}</h3>
+            <h3 className="font-display text-sm text-fg mt-3 first:mt-0">{children}</h3>
           ),
           h3: ({ children }) => (
-            <h4 className="font-display text-sm font-semibold text-fg mt-3 first:mt-0">{children}</h4>
+            <h4 className="font-display text-sm text-fg mt-3 first:mt-0">{children}</h4>
           ),
           h4: ({ children }) => (
             <h5 className="text-sm font-semibold text-fg-muted mt-2 first:mt-0">{children}</h5>
@@ -54,7 +54,7 @@ export function Markdown({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2 hover:text-primary-hover"
+              className="text-gold underline underline-offset-2 hover:text-gold-hover"
             >
               {children}
             </a>

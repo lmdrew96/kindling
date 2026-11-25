@@ -42,7 +42,7 @@ export function ConfirmDeleteDialog({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md space-y-4 rounded-xl border border-border-strong bg-surface p-5"
       >
-        <h2 id="delete-title" className="font-display text-lg font-bold text-fg">
+        <h2 id="delete-title" className="font-display text-lg text-fg">
           Delete this spark?
         </h2>
 

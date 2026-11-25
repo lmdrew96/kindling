@@ -14,14 +14,14 @@ export default function AppleIcon(): ImageResponse {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#141018',
+          background: '#120d0b',
         }}
       >
         <svg width="132" height="132" viewBox="0 0 64 64">
           <defs>
             <linearGradient id="ember" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#f5b878" />
-              <stop offset="1" stopColor="#e8643c" />
+              <stop offset="0" stopColor="#ffc23d" />
+              <stop offset="1" stopColor="#ff7b22" />
             </linearGradient>
           </defs>
           <path

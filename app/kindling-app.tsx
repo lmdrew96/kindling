@@ -32,6 +32,7 @@ import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 import { Sidebar, ThemeToggle, type View } from '@/components/sidebar'
 import { EmberFlare } from '@/components/ember-flare'
 import { DevelopDialog } from '@/components/develop-dialog'
+import { HeatFlame, MatchMark } from '@/components/flame'
 
 // The origin never changes within a page's life, so there is nothing to
 // subscribe to — this exists only to satisfy useSyncExternalStore's signature.
@@ -91,6 +92,17 @@ const SOURCE_LABELS: Record<SparkSource, string> = {
 
 /** More than this and the chips start to outweigh the idea. */
 const MAX_CARD_TAGS = 4
+
+/** The .spark-card[data-heat] states in globals.css. */
+type HeatState = 'blazing' | 'smoldering' | 'low' | 'cold' | 'promoted'
+
+const HEAT_LABELS: Record<HeatState, string> = {
+  blazing: 'Blazing — touched recently',
+  smoldering: 'Smoldering — a few weeks quiet',
+  low: 'Burning low — worth another look',
+  cold: 'Gone cold',
+  promoted: 'Caught fire — became something real',
+}
 
 const SNOOZE_CHOICES: Array<{ label: string; days: number }> = [
   { label: '1 week', days: 7 },
@@ -259,34 +271,36 @@ function SparkCard({
   const preview = previewText(spark)
   const bodyId = `spark-body-${spark.id}`
 
-  // The left rail is the spark's temperature: hot when it was touched
-  // recently, slate as it drifts toward cold. sparkHeat is the neglect term
-  // inverted — NOT scoreSpark, which runs high for the stalest sparks. Null
-  // means the spark is off the decay clock and the rail stays neutral.
+  // A card's heat is the spark's temperature: blazing when it was touched
+  // recently, burning low as it drifts toward cold. sparkHeat is the neglect
+  // term inverted — NOT scoreSpark, which runs high for the stalest sparks.
+  // Null means the spark is off the decay clock (standing, snoozed, archived,
+  // promoted) and gets no flame, except promoted, which wears gold.
   // `now` defaults inside the helper; sparks only render after a client fetch,
   // so there is no server render to disagree with.
   const trueHeat = sparkHeat(spark, undefined, decayDays)
-  // Paint along the emphasis curve, not the raw value — see heatEmphasis.
+  // Bucket along the emphasis curve, not the raw value — see heatEmphasis.
   const heat = trueHeat === null ? null : heatEmphasis(trueHeat)
-  const railColor =
-    heat === null
-      ? promoted
-        ? 'color-mix(in srgb, var(--color-primary) 50%, transparent)'
-        : 'var(--color-border-strong)'
-      : `color-mix(in oklch, var(--color-hot) ${Math.round(heat * 100)}%, var(--color-cold))`
-
-  // Same cuts the prefers-contrast override in globals.css expects.
-  const heatBucket =
-    heat === null ? undefined : heat >= 0.66 ? 'warm' : heat < 0.33 ? 'cold' : 'cooling'
+  // These names are the .spark-card[data-heat] states in globals.css.
+  const heatState: HeatState | undefined = promoted
+    ? 'promoted'
+    : heat === null
+      ? undefined
+      : isCold || heat === 0
+        ? 'cold'
+        : heat >= 0.66
+          ? 'blazing'
+          : heat >= 0.33
+            ? 'smoldering'
+            : 'low'
 
   const action = `text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-md transition-colors cursor-pointer`
   const ghost = `${action} text-fg-muted hover:bg-surface-hover hover:text-fg`
 
   return (
     <div
-      data-heat={heatBucket}
-      style={{ borderLeftColor: railColor }}
-      className="group/card relative flex flex-col gap-1.5 rounded-xl border border-l-[3px] border-border bg-surface-raised px-4 py-3"
+      data-heat={heatState}
+      className="spark-card group/card relative flex flex-col gap-2.5 rounded-[0.625rem] bg-surface-raised px-5 pb-4 pt-5"
     >
       {/* Selection is a mode you enter, not a permanent fixture on every card.
           It stays reachable by keyboard and always visible once checked or on
@@ -307,13 +321,29 @@ function SparkCard({
         </label>
       )}
 
-      {/* Kind and home as an eyebrow: what sort of idea, and where it lives. */}
-      {(spark.kind || spark.home) && (
-        <p className="pl-[1.125rem] text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-fg-subtle">
-          {spark.kind && KIND_LABELS[spark.kind]}
-          {spark.kind && spark.home && ' · '}
-          {spark.home && <span className="normal-case tracking-normal">{spark.home}</span>}
-        </p>
+      {/* The matchbox label: kind as a banner coloured by heat, then where it
+          lives, then the flame. */}
+      {(spark.kind || spark.home || heatState) && (
+        <div className="flex min-h-7 items-center gap-2.5">
+          {spark.kind && (
+            <span className="rounded bg-[var(--heat-banner-bg)] px-2 py-0.5 font-label text-xs font-bold uppercase tracking-[0.13em] text-[var(--heat-banner-fg)]">
+              {KIND_LABELS[spark.kind]}
+            </span>
+          )}
+          {spark.home && (
+            <span className="min-w-0 truncate text-[0.8125rem] text-fg-subtle">
+              {spark.kind && '· '}
+              {spark.home}
+            </span>
+          )}
+          {/* Hover names the state; the flame itself is decoration, since the
+              age line and status already say the same thing. */}
+          {heatState && (
+            <span title={HEAT_LABELS[heatState]} className="ml-auto shrink-0">
+              <HeatFlame />
+            </span>
+          )}
+        </div>
       )}
 
       {/* Title is the expand control. Collapsed, the card shows a plain-text
@@ -327,11 +357,15 @@ function SparkCard({
       >
         <span
           aria-hidden="true"
-          className={`mt-1 text-[0.625rem] text-fg-subtle transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`}
+          className={`mt-[0.45rem] text-[0.625rem] text-fg-subtle transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`}
         >
           ▶
         </span>
-        <span className="flex-1 text-[0.9375rem] font-semibold leading-snug text-fg transition-colors group-hover:text-primary">
+        <span
+          className={`flex-1 font-display text-xl leading-tight transition-colors group-hover:text-primary ${
+            heatState === 'cold' ? 'text-fg-subtle' : 'text-fg'
+          }`}
+        >
           {displayTitle(spark)}
         </span>
       </button>
@@ -571,10 +605,10 @@ function TokenGate({
 
   if (fresh) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-6 bg-bg">
+      <main className="flex min-h-screen items-center justify-center px-6">
         <div className="w-full max-w-md space-y-5">
           <div className="text-center">
-            <h1 className="font-display text-2xl font-bold mb-2 text-primary">
+            <h1 className="font-display text-2xl mb-2 text-primary">
               Save this token
             </h1>
             <p className="text-sm leading-relaxed text-fg-muted">
@@ -603,10 +637,13 @@ function TokenGate({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 bg-bg">
+    <main className="flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-md space-y-8 text-center">
         <div>
-          <h1 className="font-display text-3xl font-bold mb-2 text-primary">Kindling</h1>
+          <h1 className="wordmark mb-3 flex items-center justify-center gap-3 text-5xl leading-none">
+            <MatchMark />
+            Kindling
+          </h1>
           <p className="text-sm leading-relaxed text-fg-muted">
             Capture sparks before they fade. Surface them before they go cold.
           </p>
@@ -643,7 +680,7 @@ function TokenGate({
           <button
             type="button"
             onClick={generate}
-            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer bg-primary text-on-primary hover:bg-primary-hover transition-colors"
+            className="w-full py-3 px-5 rounded-xl font-semibold text-sm cursor-pointer bg-flame text-on-flame hover:bg-flame-hover transition-colors"
           >
             Get my Kindling URL →
           </button>
@@ -1497,7 +1534,7 @@ function Dashboard({
   }
 
   return (
-    <main className="min-h-screen bg-bg text-fg">
+    <main className="min-h-screen text-fg">
       {editing && (
         <EditSparkDialog
           spark={editing}
@@ -1569,7 +1606,7 @@ function Dashboard({
               <button
                 type="button"
                 onClick={toast.action.run}
-                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary text-on-primary hover:bg-primary-hover transition-colors cursor-pointer"
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-flame text-on-flame hover:bg-flame-hover transition-colors cursor-pointer"
               >
                 {toast.action.label}
               </button>
@@ -1595,7 +1632,10 @@ function Dashboard({
 
         {/* The wordmark lives in the sidebar on desktop; small screens get it here. */}
         <div className="md:hidden flex items-center justify-between">
-          <p className="font-display text-2xl font-bold tracking-tight text-primary">Kindling</p>
+          <p className="wordmark flex items-center gap-2 text-[1.75rem] leading-none">
+            <MatchMark />
+            Kindling
+          </p>
           <ThemeToggle compact />
         </div>
 
@@ -1650,10 +1690,10 @@ function Dashboard({
         <>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.2em] text-fg-subtle">
+            <p className="mb-1 font-label text-[0.8125rem] font-bold uppercase tracking-[0.15em] text-fg-subtle">
               Overview
             </p>
-            <h1 className="font-display text-2xl font-bold text-fg">Sparks</h1>
+            <h1 className="font-display text-4xl leading-none text-fg sm:text-[2.75rem]">Sparks</h1>
           </div>
           <button
             type="button"
@@ -1779,7 +1819,7 @@ function Dashboard({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-sm font-bold text-fg">
+                <h2 className="font-display text-sm text-fg">
                   Most in need of attention
                 </h2>
                 <p className="text-xs text-fg-subtle">
@@ -2207,7 +2247,7 @@ function PromotedWall({
   return (
     <section aria-labelledby="wall-title" className="space-y-3">
       <div>
-        <h2 id="wall-title" className="font-display text-lg font-bold text-fg">
+        <h2 id="wall-title" className="font-display text-lg text-fg">
           What they became
         </h2>
         <p className="text-xs text-fg-subtle">
@@ -2229,7 +2269,7 @@ function PromotedWall({
                 · {relativeAge(spark.promoted_at)}
               </p>
             )}
-            <p className="break-words font-display text-lg font-bold leading-snug text-primary">
+            <p className="break-words font-display text-lg leading-snug text-primary">
               <span aria-hidden="true">✦ </span>
               {spark.promoted_to}
             </p>

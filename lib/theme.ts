@@ -15,7 +15,7 @@ export const THEME_KEY = 'kindling:theme'
 const THEME_EVENT = 'kindling:theme'
 
 /** Browser chrome colour per mode — each is that mode's --color-bg. */
-const THEME_COLOR = { dark: '#141018', light: '#f6efe6' } as const
+const THEME_COLOR = { dark: '#120d0b', light: '#e7e5e4' } as const
 
 /** Dark is the default for a browser that has never chosen. */
 const parsePref = (raw: string | null): ThemePref =>
