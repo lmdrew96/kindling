@@ -45,10 +45,10 @@ export function StatsPanel({
       </div>
 
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Active" value={s.active} />
-        <Stat label="Cold" value={s.cold} />
-        <Stat label="Archived" value={s.archived} />
-        <Stat label="Promoted" value={s.promoted} tone="primary" />
+        <Stat label="Burning" value={s.active} />
+        <Stat label="Gone cold" value={s.cold} />
+        <Stat label="Ashes" value={s.archived} />
+        <Stat label="Caught fire" value={s.promoted} tone="primary" />
       </dl>
 
       <div className="space-y-1.5 text-xs text-fg-muted">
@@ -71,13 +71,13 @@ export function StatsPanel({
         </p>
         {s.neverSurfaced > 0 && (
           <p>
-            <strong className="text-fg">{s.neverSurfaced}</strong> active spark
+            <strong className="text-fg">{s.neverSurfaced}</strong> burning spark
             {s.neverSurfaced === 1 ? ' has' : 's have'} never surfaced.
           </p>
         )}
         {s.oldestActive && (
           <p className="truncate">
-            Oldest active: <span className="text-fg">{displayTitle(s.oldestActive)}</span> ·{' '}
+            Oldest still burning: <span className="text-fg">{displayTitle(s.oldestActive)}</span> ·{' '}
             {relativeAge(s.oldestActive.created_at)}
           </p>
         )}

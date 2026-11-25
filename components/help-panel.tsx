@@ -88,15 +88,22 @@ export function HelpPanel({
             how rarely they&rsquo;ve surfaced, then shows you the ones most in need of attention.
             Showing a spark resets its clock, which is what stops the same few surfacing forever.
           </Entry>
-          <Entry term="Cold">
-            A spark nobody has touched for a long time (180 days by default — change it under
-            Stats) drops out of active rotation. It isn&rsquo;t deleted; the Cold tab is where you
-            go to decide whether to revive it or let it go.
+          <Entry term="Burning, Gone cold, Ashes, Caught fire">
+            The four places a spark can be. <strong className="text-fg">Burning</strong> = active,
+            in recall. <strong className="text-fg">Gone cold</strong> = untouched for a long time
+            (180 days by default — change it under Stats); it isn&rsquo;t deleted, and{' '}
+            <strong className="text-fg">Rekindle</strong> brings it back.{' '}
+            <strong className="text-fg">Ashes</strong> = archived, let go on purpose.{' '}
+            <strong className="text-fg">Caught fire</strong> = promoted: it became something real.
+          </Entry>
+          <Entry term="Heat">
+            Each card&rsquo;s flame shows how recently you touched it: Blazing, Smoldering, then
+            Burning low, which is what &ldquo;worth another look&rdquo; means.
           </Entry>
           <Entry term="Promote">
             When a spark becomes something real — a project, a draft, a decision — promote it and
             say what it became. That record is the only evidence the system is working, and it
-            shows up on the &ldquo;What they became&rdquo; wall in the Promoted tab.
+            shows up on the &ldquo;What they became&rdquo; wall in the Caught fire tab.
           </Entry>
           <Entry term="Snooze and standing">
             Snooze holds a spark out of recall for a while without rejecting it. Marking one

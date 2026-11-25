@@ -457,7 +457,7 @@ function SparkCard({
           )}
           {isCold && (
             <span className="text-cold-text">
-              · <span aria-hidden="true">❄</span> cold
+              · <span aria-hidden="true">❄</span> gone cold
             </span>
           )}
           {standing && (
@@ -479,7 +479,7 @@ function SparkCard({
                 promoted ? 'border-primary/50 text-primary' : 'border-border-strong text-fg-muted'
               }`}
             >
-              {promoted ? '✦ promoted' : spark.status === 'archived' ? 'archived' : 'active'}
+              {promoted ? '✦ caught fire' : spark.status === 'archived' ? 'ashes' : 'burning'}
             </span>
           )}
         </div>
@@ -491,8 +491,8 @@ function SparkCard({
           Touch keeps them visible, since there is no hover to reveal them. */}
       <div className="flex flex-wrap items-center justify-end gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 sm:pointer-coarse:opacity-100 sm:motion-reduce:transition-none">
         {isCold && onRevive && (
-          <button type="button" onClick={onRevive} className={`${action} text-cold-text hover:bg-cold/20`}>
-            Revive
+          <button type="button" onClick={onRevive} className={`${action} text-flame-soft hover:bg-primary/10`}>
+            Rekindle
           </button>
         )}
         {onUnarchive && (
@@ -1116,13 +1116,13 @@ function Dashboard({
     [token, showToast, dismissToast]
   )
 
-  const handleArchive = (spark: Spark) => changeStatus(spark, 'archived', 'Archived.')
+  const handleArchive = (spark: Spark) => changeStatus(spark, 'archived', 'Moved to the ashes.')
 
   const handleRevive = (spark: Spark) =>
-    changeStatus(spark, 'active', 'Spark revived — back in the fire.')
+    changeStatus(spark, 'active', 'Rekindled — back in the fire.')
 
   const handleUnarchive = (spark: Spark) =>
-    changeStatus(spark, 'active', 'Unarchived — back in the fire.')
+    changeStatus(spark, 'active', 'Pulled from the ashes — back in the fire.')
 
   const handleDelete = async (spark: Spark) => {
     setConfirmDelete(null)
@@ -1504,10 +1504,10 @@ function Dashboard({
 
   const tabLabel = (t: Tab): string => {
     const labels: Record<Tab, string> = {
-      active: 'Active',
-      cold: 'Cold',
-      archived: 'Archived',
-      promoted: 'Promoted',
+      active: 'Burning',
+      cold: 'Gone cold',
+      archived: 'Ashes',
+      promoted: 'Caught fire',
     }
     return labels[t]
   }
@@ -1681,7 +1681,7 @@ function Dashboard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="mb-1 font-label text-[0.8125rem] font-bold uppercase tracking-[0.15em] text-fg-subtle">
-              Overview
+              The woodpile
             </p>
             <h1 className="font-display text-4xl leading-none text-fg sm:text-[2.75rem]">Sparks</h1>
           </div>
@@ -1740,12 +1740,12 @@ function Dashboard({
           <div>
             {showSpotlight && spotlight && (
               <section
-                aria-label="Worth another look"
+                aria-label="Burning low — worth another look"
                 className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-surface px-4 py-3 shadow-[inset_3px_0_0_var(--color-cold)]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-fg-subtle">
-                    Worth another look
+                    Burning low — worth another look
                   </p>
                   <button
                     type="button"
@@ -1771,9 +1771,9 @@ function Dashboard({
                       type="button"
                       onClick={() => void handleSurface(spotlight)}
                       title="Mark it seen — resets its decay clock"
-                      className={`text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+                      className="text-xs px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-lg border border-primary/50 text-flame-soft hover:bg-primary/10 transition-colors cursor-pointer"
                     >
-                      Revive
+                      Rekindle
                     </button>
                     <button
                       type="button"
@@ -1847,7 +1847,7 @@ function Dashboard({
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sparks…"
+            placeholder="Search the woodpile…"
             aria-label="Search sparks (searches every status)"
             className={`w-full text-sm px-4 py-2.5 rounded-xl ${INPUT}`}
           />
@@ -2140,19 +2140,19 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
 
   const messages: Record<Tab, { heading: string; sub: string }> = {
     active: {
-      heading: 'No active sparks yet.',
+      heading: 'Nothing burning yet.',
       sub: 'Strike one with the button above (or press n): give it a title, pick a kind, and say what the idea is.',
     },
     cold: {
       heading: 'Nothing has gone cold.',
-      sub: 'Sparks with no interaction for 180 days move here automatically.',
+      sub: 'Sparks with no interaction for 180 days move here automatically. Rekindle one to bring it back.',
     },
     archived: {
-      heading: 'Nothing archived.',
-      sub: 'Sparks you let go of land here. Promoted ones get their own tab.',
+      heading: 'No ashes.',
+      sub: 'Sparks you let go of (archived) land here. Ones that caught fire get their own tab.',
     },
     promoted: {
-      heading: 'Nothing promoted yet.',
+      heading: 'Nothing has caught fire yet.',
       sub: 'When a spark becomes a project, a draft, or a decision, promote it — this is where you see that it happened.',
     },
   }
