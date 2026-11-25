@@ -26,7 +26,7 @@ import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
 import { SparkDialog, PromoteDialog, type SparkDialogFocus, type SparkEdit } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
-import { SortDialog, type SortPatch } from '@/components/sort-dialog'
+import { SortDialog, type SortPatch, type SortPurpose } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
 import { AccountPanel, type PublicAccount } from '@/components/account-panel'
 import { Sidebar, ThemeToggle, type View } from '@/components/sidebar'
@@ -917,7 +917,7 @@ function Dashboard({
   const [spotlightDismissed, setSpotlightDismissed] = useState<string | null>(null)
   // The sort review works over a snapshot, so saving one doesn't reshuffle
   // the queue under the user's hands.
-  const [sortQueue, setSortQueue] = useState<Spark[] | null>(null)
+  const [sortQueue, setSortQueue] = useState<{ sparks: Spark[]; purpose: SortPurpose } | null>(null)
   const [sortPromptDismissed, setSortPromptDismissed] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -1546,7 +1546,9 @@ function Dashboard({
 
       {sortQueue && (
         <SortDialog
-          queue={sortQueue}
+          queue={sortQueue.sparks}
+          purpose={sortQueue.purpose}
+          knownHomes={knownHomes}
           onSave={(spark, patch) => void handleSort(spark, patch)}
           onClose={() => setSortQueue(null)}
         />
@@ -1725,7 +1727,9 @@ function Dashboard({
               </button>
               <button
                 type="button"
-                onClick={() => setSortQueue(unsorted.slice().sort(COMPARATORS.newest))}
+                onClick={() =>
+                  setSortQueue({ sparks: unsorted.slice().sort(COMPARATORS.newest), purpose: 'kinds' })
+                }
                 className={`text-xs px-3 min-h-9 pointer-coarse:min-h-11 ${BTN_GHOST}`}
               >
                 Sort them →
@@ -2030,6 +2034,21 @@ function Dashboard({
                     {group.sparks.length}
                   </span>
                 </h2>
+                {/* Homeless sparks otherwise move one Edit at a time. */}
+                {!group.home && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSortQueue({
+                        sparks: group.sparks.slice().sort(COMPARATORS.newest),
+                        purpose: 'homes',
+                      })
+                    }
+                    className={`w-full text-xs px-3 min-h-9 pointer-coarse:min-h-11 ${BTN_GHOST}`}
+                  >
+                    Give them homes →
+                  </button>
+                )}
                 {group.sparks.map(renderCard)}
               </section>
             ))}

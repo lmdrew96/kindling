@@ -6,21 +6,30 @@ import { firstLineAsTitle, previewText, suggestKind } from '@/lib/spark-utils'
 import { Shell } from './spark-dialog'
 import { BTN_GHOST, BTN_PRIMARY, INPUT } from './ui'
 
-export type SortPatch = { kind: SparkKind; title?: string; content?: string }
+export type SortPatch = { kind: SparkKind; home?: string; title?: string; content?: string }
+
+/** Which gap the review is filling: kinds (the one-time pass) or homes (from the board). */
+export type SortPurpose = 'kinds' | 'homes'
 
 /**
- * The one-time pass over sparks captured before kinds existed. One spark at a
- * time; a suggestion from its tags is marked but never applied on its own —
- * nothing is written until Save. Closing keeps whatever was already saved, so
- * the review can be picked up again later.
+ * A one-spark-at-a-time review: the one-time pass over sparks captured before
+ * kinds existed, or (from the by-home board) a pass over sparks with no home.
+ * Every step offers both kind and home. A suggestion from its tags is marked
+ * but never applied on its own — nothing is written until Save, and Skip
+ * writes nothing. Closing keeps whatever was already saved, so the review can
+ * be picked up again later.
  */
 export function SortDialog({
   queue,
+  knownHomes,
+  purpose = 'kinds',
   onSave,
   onClose,
 }: {
-  /** The unsorted sparks, snapshotted when the review opened. */
+  /** The sparks to review, snapshotted when the review opened. */
   queue: Spark[]
+  knownHomes: string[]
+  purpose?: SortPurpose
   onSave: (spark: Spark, patch: SortPatch) => void
   onClose: () => void
 }) {
@@ -31,8 +40,9 @@ export function SortDialog({
     return (
       <Shell title="All sorted" labelledBy="sort-title" onCancel={onClose}>
         <p className="text-sm text-fg-muted">
-          Every spark in this pass has a kind now — or was skipped, and still shows under
-          Unsorted.
+          {purpose === 'homes'
+            ? 'Every spark in this pass has a home now — or was skipped, and still shows under Unsorted on the board.'
+            : 'Every spark in this pass has a kind now — or was skipped, and still shows under Unsorted.'}
         </p>
         <div className="flex justify-end">
           <button type="button" onClick={onClose} className={`min-h-11 px-4 text-sm ${BTN_PRIMARY}`}>
@@ -48,6 +58,8 @@ export function SortDialog({
     <SortStep
       key={spark.id}
       spark={spark}
+      knownHomes={knownHomes}
+      purpose={purpose}
       position={`${index + 1} of ${queue.length}`}
       onSave={(patch) => {
         onSave(spark, patch)
@@ -61,19 +73,25 @@ export function SortDialog({
 
 function SortStep({
   spark,
+  knownHomes,
+  purpose,
   position,
   onSave,
   onSkip,
   onClose,
 }: {
   spark: Spark
+  knownHomes: string[]
+  purpose: SortPurpose
   position: string
   onSave: (patch: SortPatch) => void
   onSkip: () => void
   onClose: () => void
 }) {
-  const suggested = suggestKind(spark.tags ?? [])
-  const [kind, setKind] = useState<SparkKind | null>(suggested)
+  // A spark that already has a kind keeps it; otherwise its tags may suggest one.
+  const suggested = spark.kind ? null : suggestKind(spark.tags ?? [])
+  const [kind, setKind] = useState<SparkKind | null>(spark.kind ?? suggested)
+  const [home, setHome] = useState(spark.home ?? '')
 
   // Only sparks without a stored title get the title offer.
   const derived = spark.title?.trim() ? null : firstLineAsTitle(spark)
@@ -82,8 +100,10 @@ function SortStep({
 
   const save = () => {
     if (!kind) return
+    const nextHome = home.trim()
     onSave({
       kind,
+      ...(nextHome && nextHome !== spark.home ? { home: nextHome } : {}),
       ...(derived && title.trim() ? { title: title.trim() } : {}),
       ...(derived && strip && derived.strippedContent ? { content: derived.strippedContent } : {}),
     })
@@ -92,7 +112,11 @@ function SortStep({
   const preview = previewText(spark)
 
   return (
-    <Shell title="Sort your sparks" labelledBy="sort-title" onCancel={onClose}>
+    <Shell
+      title={purpose === 'homes' ? 'Give them homes' : 'Sort your sparks'}
+      labelledBy="sort-title"
+      onCancel={onClose}
+    >
       <p className="font-mono text-[0.6875rem] text-fg-subtle">{position}</p>
 
       <div className="space-y-1.5 rounded-lg border border-border bg-surface-raised p-3">
@@ -151,6 +175,29 @@ function SortStep({
           ))}
         </div>
       </div>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs text-fg-muted">
+          Home (optional) — the project or place it belongs to
+        </span>
+        <input
+          value={home}
+          onChange={(e) => setHome(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save()
+          }}
+          list="known-homes-sort"
+          maxLength={120}
+          autoFocus={purpose === 'homes'}
+          placeholder="Leave empty to keep it unsorted"
+          className={`w-full text-sm px-3 py-2.5 ${INPUT}`}
+        />
+        <datalist id="known-homes-sort">
+          {knownHomes.map((h) => (
+            <option key={h} value={h} />
+          ))}
+        </datalist>
+      </label>
 
       <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-between">
         <button type="button" onClick={onClose} className={`min-h-11 px-4 text-sm ${BTN_GHOST}`}>
