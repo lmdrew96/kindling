@@ -227,21 +227,6 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto flex flex-col gap-3 px-2 pb-4">
-          {!collapsed && (
-            <div className="mx-3 border-t border-border pt-3">
-              <p className="mb-2 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-fg-subtle">
-                Stats
-              </p>
-              <dl className="space-y-1 text-xs text-fg-subtle">
-                {(['active', 'cold', 'archived'] as const).map((k) => (
-                  <div key={k} className="flex justify-between capitalize">
-                    <dt>{k}</dt>
-                    <dd className="font-mono text-fg-muted">{counts[k]}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          )}
           <div className={collapsed ? 'flex justify-center' : 'mx-1'}>
             <ThemeToggle compact={collapsed} />
           </div>

@@ -1447,12 +1447,6 @@ function Dashboard({
     archived: sparks.filter((s) => s.status === 'archived').length,
   }
 
-  // Orientation for the top of the list. All derived from the array already
-  // in hand — no extra request.
-  // eslint-disable-next-line react-hooks/purity -- sparks only render after a client fetch
-  const weekAgo = Date.now() - 7 * 86_400_000
-  const surfacedThisWeek = sparks.filter((s) => (s.last_surfaced_at ?? 0) >= weekAgo).length
-
   // The spark recall would pick first. Shown passively — looking at the
   // dashboard doesn't count as surfacing it; Revive does.
   const spotlight =
@@ -1740,23 +1734,10 @@ function Dashboard({
           </div>
         )}
 
-        {/* At a glance: the counts, then the one spark recall would pick. */}
+        {/* The one spark recall would pick. Status counts live on the filter
+            chips only, so they aren't repeated up here. */}
         {!loading && !loadError && sparks.length > 0 && !searching && (
-          <div className={`grid gap-3 ${showSpotlight ? 'lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]' : ''}`}>
-            <dl className="grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-surface">
-              {[
-                { label: 'Active', value: statusCounts.active },
-                { label: 'Cold', value: statusCounts.cold },
-                { label: 'Surfaced 7d', value: surfacedThisWeek },
-                { label: 'Promoted', value: counts.promoted },
-              ].map((stat) => (
-                <div key={stat.label} className="flex flex-col justify-center gap-0.5 px-3 py-3">
-                  <dd className="font-mono text-xl leading-none text-fg">{stat.value}</dd>
-                  <dt className="text-[0.6875rem] text-fg-subtle">{stat.label}</dt>
-                </div>
-              ))}
-            </dl>
-
+          <div>
             {showSpotlight && spotlight && (
               <section
                 aria-label="Worth another look"

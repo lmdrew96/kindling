@@ -264,6 +264,8 @@ export interface SparkStats {
   mostNeglected: Spark | null
   capturedLast30: number
   capturedLast7: number
+  /** Sparks recall surfaced in the last week. */
+  surfacedLast7: number
   untagged: number
   neverSurfaced: number
 }
@@ -296,6 +298,7 @@ export const computeStats = (sparks: Spark[], now: number = Date.now()): SparkSt
     mostNeglected: byNeglect[0] ?? null,
     capturedLast30: since(30),
     capturedLast7: since(7),
+    surfacedLast7: sparks.filter((s) => now - (s.last_surfaced_at ?? -Infinity) <= 7 * DAY_MS).length,
     untagged: sparks.filter((s) => (s.tags ?? []).length === 0).length,
     neverSurfaced: active.filter((s) => s.surface_count === 0).length,
   }

@@ -66,6 +66,9 @@ export function StatsPanel({
           <strong className="text-fg">{s.capturedLast7}</strong> captured this week,{' '}
           <strong className="text-fg">{s.capturedLast30}</strong> in the last 30 days.
         </p>
+        <p>
+          <strong className="text-fg">{s.surfacedLast7}</strong> surfaced by recall this week.
+        </p>
         {s.neverSurfaced > 0 && (
           <p>
             <strong className="text-fg">{s.neverSurfaced}</strong> active spark
