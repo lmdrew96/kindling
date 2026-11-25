@@ -725,7 +725,7 @@ Type is Alfa Slab One for display, Archivo for body and Archivo Narrow for label
 
 **Dashboard**
 
-- **Kindle input** — textarea plus comma-separated tags field. `⌘↵` / `Ctrl+↵` submits and refocuses for rapid-fire capture.
+- **+ Strike a spark** — a header button (or `n`) that opens the full spark form: title, kind, the idea, home, next step and tags. `⌘↵` / `Ctrl+↵` saves. Capture is deliberate here; raw passing thoughts belong in Loose Change.
 - **Search** — client-side filter across content and tags within the active tab.
 - **Tabs** — Active / Cold / Archived, each with a live count.
 - **Spark cards** — content, tag pills, relative capture age, surface count, and a cold indicator. Archive on anything not already archived; Revive on cold sparks.

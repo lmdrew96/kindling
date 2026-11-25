@@ -127,6 +127,44 @@ export const contentExtent = (content: string): string => {
   return `${words} words`
 }
 
+/** A line or title reduced for comparison: no heading marks, no inline
+ *  markdown, no trailing punctuation, lowercased. */
+const titleKey = (s: string): string =>
+  s
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/(\*\*|__|\*|_|~~|`)/g, '')
+    .trim()
+    .replace(/[\s.!?:;,…—–-]+$/u, '')
+    .toLowerCase()
+
+/**
+ * The body to show under a STORED title. Many sparks open by restating their
+ * title — often as a `# heading` — so the card printed it twice. Drops a first
+ * line that is the title, or a first sentence that is ("GO-GO FIVE. A series
+ * of…" keeps "A series of…"). Display only: stored content is never touched.
+ */
+export const contentWithoutTitle = (spark: Spark): string => {
+  const key = spark.title ? titleKey(spark.title) : ''
+  if (!key) return spark.content
+  const lines = spark.content.split('\n')
+  const i = lines.findIndex((l) => l.trim().length > 0)
+  if (i < 0) return spark.content
+
+  const first = lines[i].trim()
+  if (titleKey(first) === key) return lines.slice(i + 1).join('\n').trim()
+
+  // The title as the first sentence, followed by a real separator and more text.
+  const bare = first.replace(/^#{1,6}\s+/, '').replace(/(\*\*|__|\*|_|~~|`)/g, '')
+  if (bare.toLowerCase().startsWith(key)) {
+    const sep = bare.slice(key.length).match(/^\s*[.!?:;—–-]+\s+/u)
+    if (sep) {
+      const rest = bare.slice(key.length + sep[0].length)
+      return [rest, ...lines.slice(i + 1)].join('\n').trim()
+    }
+  }
+  return spark.content
+}
+
 /**
  * A plain-text glimpse of what a card holds beyond its title, for the
  * collapsed two-line preview. Markdown syntax is stripped rather than
@@ -134,7 +172,7 @@ export const contentExtent = (content: string): string => {
  * is one click away. Empty when the title already says everything.
  */
 export const previewText = (spark: Spark): string => {
-  const lines = spark.content.split('\n').map((l) => l.trim()).filter(Boolean)
+  const lines = contentWithoutTitle(spark).split('\n').map((l) => l.trim()).filter(Boolean)
   // A derived title IS the first line, so the preview starts after it —
   // unless the title had to truncate that line, in which case the preview
   // carries the whole line so the cut-off part is still readable.

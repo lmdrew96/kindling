@@ -5,12 +5,12 @@ import { KIND_LABELS, SPARK_KINDS, type Spark, type SparkKind, type SparkSource,
 import {
   DECAY_THRESHOLD_DAYS,
   absoluteDate,
+  contentWithoutTitle,
   displayTitle,
   fuzzyMatches,
   isPromoted,
   isSnoozed,
   isStanding,
-  normalizeTags,
   previewText,
   relativeAge,
   scoreSpark,
@@ -24,7 +24,7 @@ import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
-import { EditSparkDialog, PromoteDialog, type SparkEdit } from '@/components/spark-dialog'
+import { SparkDialog, PromoteDialog, type SparkEdit } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { SortDialog, type SortPatch } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
@@ -372,7 +372,7 @@ function SparkCard({
 
       <div id={bodyId} className="pl-[1.125rem]">
         {expanded ? (
-          <Markdown className="text-[0.9375rem] text-fg">{spark.content}</Markdown>
+          <Markdown className="text-[0.9375rem] text-fg">{contentWithoutTitle(spark)}</Markdown>
         ) : (
           preview && <p className="line-clamp-2 text-sm leading-relaxed text-fg-muted">{preview}</p>
         )}
@@ -873,14 +873,9 @@ function Dashboard({
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const [search, setSearch] = useState('')
-  const [kindleTitle, setKindleTitle] = useState('')
-  const [kindleKind, setKindleKind] = useState<SparkKind | null>(null)
-  const [kindleText, setKindleText] = useState('')
-  const [kindleHome, setKindleHome] = useState('')
-  const [kindleNext, setKindleNext] = useState('')
-  const [tagChips, setTagChips] = useState<string[]>([])
-  const [tagDraft, setTagDraft] = useState('')
-  const [composerFocused, setComposerFocused] = useState(false)
+  // The Strike a spark dialog. Capture is deliberate here, so a new spark
+  // gets the full form rather than an always-open box.
+  const [striking, setStriking] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [kindling, setKindling] = useState(false)
@@ -903,9 +898,6 @@ function Dashboard({
   // the queue under the user's hands.
   const [sortQueue, setSortQueue] = useState<Spark[] | null>(null)
   const [sortPromptDismissed, setSortPromptDismissed] = useState(false)
-  // The title is the composer's always-mounted field, so it's what `c` focuses.
-  const kindleRef = useRef<HTMLInputElement>(null)
-  const ideaRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // The origin is only knowable in the browser. Reading window.location straight
@@ -1007,12 +999,15 @@ function Dashboard({
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return
 
-      // Both fields live in the Sparks view, so the shortcut takes you there
-      // first and focuses once it has rendered.
-      if (e.key === 'c') {
+      // A dialog owns the keyboard while it is open.
+      if (document.querySelector('[role="dialog"]')) return
+
+      // `n` (and the older `c`) strikes a spark; `/` searches, which lives in
+      // the Sparks view, so it takes you there first and focuses once rendered.
+      if (e.key === 'n' || e.key === 'c') {
         e.preventDefault()
         setView('sparks')
-        requestAnimationFrame(() => kindleRef.current?.focus())
+        setStriking(true)
       } else if (e.key === '/') {
         e.preventDefault()
         setView('sparks')
@@ -1023,54 +1018,22 @@ function Dashboard({
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Grow the idea box with its content rather than scrolling inside 3 rows.
-  useEffect(() => {
-    const el = ideaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 320)}px`
-  }, [kindleText, composerFocused])
-
-  // At rest the composer is one line; it opens on focus (click, tab or `c`)
-  // and folds back only once it is both empty and blurred, so a half-written
-  // thought never disappears behind a collapse.
-  const composerOpen =
-    composerFocused ||
-    [kindleTitle, kindleText, kindleHome, kindleNext, tagDraft].some((v) => v.length > 0) ||
-    kindleKind !== null ||
-    tagChips.length > 0
-
-  const canKindle = Boolean(kindleTitle.trim() && kindleKind && kindleText.trim())
-
-  const commitTagDraft = (raw: string) => {
-    const next = normalizeTags([...tagChips, ...raw.split(',')])
-    setTagChips(next)
-    setTagDraft('')
-  }
-
-  const handleKindle = async () => {
-    if (!canKindle || !kindleKind || kindling) return
-    const tags = normalizeTags([...tagChips, ...tagDraft.split(',')])
+  const handleStrike = async (patch: SparkEdit) => {
+    if (kindling || !patch.title || !patch.kind) return
     setKindling(true)
     try {
       const spark = await kindleApi(token, {
-        title: kindleTitle.trim(),
-        kind: kindleKind,
-        content: kindleText.trim(),
-        ...(kindleHome.trim() ? { home: kindleHome.trim() } : {}),
-        ...(kindleNext.trim() ? { next_step: kindleNext.trim() } : {}),
-        tags,
+        title: patch.title,
+        kind: patch.kind,
+        content: patch.content,
+        ...(patch.home ? { home: patch.home } : {}),
+        ...(patch.next_step ? { next_step: patch.next_step } : {}),
+        tags: patch.tags,
       })
       setSparks((prev) => [spark, ...prev])
-      setKindleTitle('')
-      setKindleKind(null)
-      setKindleText('')
-      setKindleHome('')
-      setKindleNext('')
-      setTagChips([])
-      setTagDraft('')
+      // Closes only once the write lands, so a failure never eats the draft.
+      setStriking(false)
       showToast('Spark kindled.')
-      kindleRef.current?.focus()
     } catch {
       showToast('Failed to kindle — try again.')
     } finally {
@@ -1536,12 +1499,22 @@ function Dashboard({
   return (
     <main className="min-h-screen text-fg">
       {editing && (
-        <EditSparkDialog
+        <SparkDialog
           spark={editing}
           knownTags={knownTags}
           knownHomes={knownHomes}
           onCancel={() => setEditing(null)}
           onSave={(patch) => void handleEdit(editing, patch)}
+        />
+      )}
+
+      {striking && (
+        <SparkDialog
+          busy={kindling}
+          knownTags={knownTags}
+          knownHomes={knownHomes}
+          onCancel={() => setStriking(false)}
+          onSave={(patch) => void handleStrike(patch)}
         />
       )}
 
@@ -1695,15 +1668,26 @@ function Dashboard({
             </p>
             <h1 className="font-display text-4xl leading-none text-fg sm:text-[2.75rem]">Sparks</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleRecall()}
-            disabled={recalling}
-            title="Show the sparks most in need of attention"
-            className={`text-xs px-3 min-h-11 disabled:opacity-50 ${BTN_GHOST}`}
-          >
-            {recalling ? 'Recalling…' : 'Recall 5'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => void handleRecall()}
+              disabled={recalling}
+              title="Show the sparks most in need of attention"
+              className={`text-sm font-semibold px-4 min-h-11 disabled:opacity-50 ${BTN_GHOST}`}
+            >
+              {recalling ? 'Recalling…' : 'Recall 5'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setStriking(true)}
+              title="New spark (n)"
+              aria-keyshortcuts="n"
+              className={`text-sm font-bold px-5 min-h-11 ${BTN_PRIMARY}`}
+            >
+              + Strike a spark
+            </button>
+          </div>
         </div>
 
         {/* The one-time sort for sparks from before kinds existed. Goes away
@@ -1851,172 +1835,6 @@ function Dashboard({
             </div>
           </section>
         )}
-
-        {/* Kindle input */}
-        <div
-          onFocus={() => setComposerFocused(true)}
-          onBlur={(e) => {
-            // Moving focus between the composer's own fields is not leaving it.
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setComposerFocused(false)
-          }}
-          className={`rounded-2xl border bg-surface transition-colors motion-reduce:transition-none ${
-            composerOpen ? 'border-border-strong p-4 space-y-3 shadow-lg' : 'border-border px-4 py-2.5'
-          }`}
-        >
-          <input
-            ref={kindleRef}
-            value={kindleTitle}
-            onChange={(e) => setKindleTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
-            }}
-            placeholder={composerOpen ? 'Title' : "What's the idea? Capture it before it fades…"}
-            aria-label="Spark title"
-            maxLength={200}
-            className={`block w-full bg-transparent text-fg outline-none placeholder:text-fg-subtle ${
-              composerOpen ? 'text-lg font-semibold' : 'text-base'
-            }`}
-          />
-          {composerOpen && (
-            <>
-              {/* One tap, not a dropdown. Required, like the title and idea. */}
-              <div role="radiogroup" aria-label="Kind" className="flex flex-wrap gap-1.5">
-                {SPARK_KINDS.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    role="radio"
-                    aria-checked={kindleKind === k}
-                    onClick={() => setKindleKind((cur) => (cur === k ? null : k))}
-                    className={`rounded-md border px-2.5 min-h-8 pointer-coarse:min-h-11 text-xs transition-colors cursor-pointer ${
-                      kindleKind === k
-                        ? 'border-primary/60 bg-primary/15 text-primary font-semibold'
-                        : 'border-border-strong text-fg-muted hover:bg-surface-hover hover:text-fg'
-                    }`}
-                  >
-                    {KIND_LABELS[k]}
-                  </button>
-                ))}
-              </div>
-
-              <textarea
-                ref={ideaRef}
-                value={kindleText}
-                onChange={(e) => setKindleText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
-                }}
-                placeholder="The idea — markdown welcome"
-                aria-label="The idea"
-                rows={3}
-                className={`block w-full resize-none overflow-y-auto px-3 py-2 text-[0.9375rem] leading-relaxed ${INPUT}`}
-              />
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  value={kindleHome}
-                  onChange={(e) => setKindleHome(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
-                  }}
-                  placeholder="Home (optional) — where it lives"
-                  aria-label="Home (optional)"
-                  list="known-homes"
-                  maxLength={120}
-                  className={`text-xs px-3 py-2 ${INPUT}`}
-                />
-                <datalist id="known-homes">
-                  {knownHomes.map((h) => (
-                    <option key={h} value={h} />
-                  ))}
-                </datalist>
-                <input
-                  value={kindleNext}
-                  onChange={(e) => setKindleNext(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleKindle()
-                  }}
-                  placeholder="Next step (optional) — one line"
-                  aria-label="Next step (optional)"
-                  maxLength={300}
-                  className={`text-xs px-3 py-2 ${INPUT}`}
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Chip input: Enter or comma commits, Backspace on an empty
-                    draft takes the last chip back. */}
-                <div className={`flex flex-1 min-w-48 flex-wrap items-center gap-1 px-2 py-1.5 ${INPUT}`}>
-                  {tagChips.map((t) => (
-                    <span
-                      key={t}
-                      className="flex items-center gap-1 rounded-md bg-tag-bg pl-1.5 pr-0.5 py-0.5 text-[0.6875rem] leading-none text-tag-fg"
-                    >
-                      {t}
-                      <button
-                        type="button"
-                        onClick={() => setTagChips((prev) => prev.filter((x) => x !== t))}
-                        aria-label={`Remove tag ${t}`}
-                        className="rounded px-1 text-fg-subtle hover:text-fg cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    value={tagDraft}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (v.includes(',')) commitTagDraft(v)
-                      else setTagDraft(v)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                        void handleKindle()
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault()
-                        if (tagDraft.trim()) commitTagDraft(tagDraft)
-                      } else if (e.key === 'Backspace' && tagDraft === '' && tagChips.length > 0) {
-                        e.preventDefault()
-                        setTagChips((prev) => prev.slice(0, -1))
-                      }
-                    }}
-                    placeholder={tagChips.length ? 'Add tag' : 'Tags'}
-                    aria-label="Add a tag (Enter or comma to add)"
-                    list="known-tags"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="flex-1 min-w-20 bg-transparent text-xs text-fg outline-none placeholder:text-fg-subtle"
-                  />
-                </div>
-                {/* Suggests tags already in use, so the taxonomy stops fragmenting
-                    into writing / Writing / write across three sessions. */}
-                <datalist id="known-tags">
-                  {knownTags
-                    .filter((t) => !tagChips.includes(t))
-                    .map((t) => (
-                      <option key={t} value={t} />
-                    ))}
-                </datalist>
-                <button
-                  type="button"
-                  onClick={() => void handleKindle()}
-                  disabled={!canKindle}
-                  aria-busy={kindling}
-                  title={canKindle ? undefined : 'Needs a title, a kind and the idea'}
-                  className={`text-sm px-5 min-h-11 ${BTN_PRIMARY}`}
-                >
-                  {kindling ? 'Kindling…' : 'Kindle'}
-                </button>
-              </div>
-              <p className="font-mono text-[0.6875rem] text-fg-subtle">
-                ⌘↵ to submit · <kbd>c</kbd> to capture · <kbd>/</kbd> to search · <kbd>Esc</kbd> to
-                leave a field
-              </p>
-            </>
-          )}
-        </div>
 
         {/* Search */}
         <div className="space-y-1.5">
@@ -2318,7 +2136,7 @@ function EmptyState({ tab, hasSearch }: { tab: Tab; hasSearch: boolean }) {
   const messages: Record<Tab, { heading: string; sub: string }> = {
     active: {
       heading: 'No active sparks yet.',
-      sub: 'Capture one above — give it a title, pick a kind, and say what the idea is.',
+      sub: 'Strike one with the button above (or press n): give it a title, pick a kind, and say what the idea is.',
     },
     cold: {
       heading: 'Nothing has gone cold.',
