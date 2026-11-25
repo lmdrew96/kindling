@@ -24,7 +24,7 @@ import { TokenDisplay } from '@/components/token-display'
 import { ForgetTokenDialog } from '@/components/forget-token-dialog'
 import { StatsPanel } from '@/components/stats-panel'
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog'
-import { SparkDialog, PromoteDialog, type SparkEdit } from '@/components/spark-dialog'
+import { SparkDialog, PromoteDialog, type SparkDialogFocus, type SparkEdit } from '@/components/spark-dialog'
 import { HelpPanel } from '@/components/help-panel'
 import { SortDialog, type SortPatch } from '@/components/sort-dialog'
 import { clearTokenCookie, writeTokenCookie } from '@/lib/token-cookie'
@@ -227,6 +227,7 @@ async function setStatusApi(token: string, id: string, status: SparkStatus): Pro
 function SparkCard({
   spark,
   onEdit,
+  onAddNextStep,
   onDevelop,
   onPromote,
   onSnooze,
@@ -243,6 +244,9 @@ function SparkCard({
 }: {
   spark: Spark
   onEdit?: () => void
+  /** Opens the edit dialog on the next-step field. Omitted where a next
+   *  step makes no sense (archived and promoted sparks). */
+  onAddNextStep?: () => void
   onDevelop?: () => void
   onPromote?: () => void
   onSnooze?: (days: number) => void
@@ -378,10 +382,26 @@ function SparkCard({
         )}
       </div>
 
-      {spark.next_step && (
-        <p className="pl-[1.125rem] text-xs text-fg-muted">
-          <span className="font-semibold text-fg">Next:</span> {spark.next_step}
-        </p>
+      {/* The next step is the most useful line on a card, so it gets its own
+          gold box; a card without one offers to add it. */}
+      {spark.next_step ? (
+        <div className="ml-[1.125rem] flex items-start gap-2 rounded-lg border border-next-border bg-next-bg px-3 py-2.5">
+          <span className="whitespace-nowrap pt-px font-label text-[0.8125rem] font-bold uppercase leading-snug tracking-[0.08em] text-gold">
+            Next<span aria-hidden="true"> ▸</span>
+            <span className="sr-only">:</span>
+          </span>
+          <Markdown className="min-w-0 flex-1 text-sm leading-snug text-fg">{spark.next_step}</Markdown>
+        </div>
+      ) : (
+        onAddNextStep && (
+          <button
+            type="button"
+            onClick={onAddNextStep}
+            className="ml-[1.125rem] self-start rounded-lg border border-dashed border-gold/50 px-3 min-h-10 pointer-coarse:min-h-11 text-sm font-semibold text-gold hover:bg-next-bg transition-colors cursor-pointer"
+          >
+            + Add a next step
+          </button>
+        )
       )}
 
       {/* Promotion record. The whole point of the system. */}
@@ -884,7 +904,8 @@ function Dashboard({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<Spark | null>(null)
   const [decayDays, setDecayDays] = useState<number>(DECAY_THRESHOLD_DAYS)
-  const [editing, setEditing] = useState<Spark | null>(null)
+  const [editing, setEditing] = useState<{ spark: Spark; focus?: SparkDialogFocus } | null>(null)
+  const openEdit = (spark: Spark, focus?: SparkDialogFocus) => setEditing({ spark, focus })
   const [promoting, setPromoting] = useState<Spark | null>(null)
   const [developing, setDeveloping] = useState<Spark | null>(null)
   // Bumped per promotion so back-to-back promotions each get a fresh flare.
@@ -1477,7 +1498,8 @@ function Dashboard({
       selected={selected.has(spark.id)}
       onToggleSelected={() => toggleSelected(spark.id)}
       onDelete={() => setConfirmDelete(spark)}
-      onEdit={() => setEditing(spark)}
+      onEdit={() => openEdit(spark)}
+      onAddNextStep={spark.status !== 'archived' ? () => openEdit(spark, 'next') : undefined}
       onDevelop={spark.status !== 'archived' ? () => setDeveloping(spark) : undefined}
       onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
       onToggleStanding={() => void handleToggleStanding(spark)}
@@ -1500,11 +1522,12 @@ function Dashboard({
     <main className="min-h-screen text-fg">
       {editing && (
         <SparkDialog
-          spark={editing}
+          spark={editing.spark}
+          focus={editing.focus}
           knownTags={knownTags}
           knownHomes={knownHomes}
           onCancel={() => setEditing(null)}
-          onSave={(patch) => void handleEdit(editing, patch)}
+          onSave={(patch) => void handleEdit(editing.spark, patch)}
         />
       )}
 
@@ -1825,7 +1848,8 @@ function Dashboard({
                   key={`recalled-${spark.id}`}
                   spark={spark}
                   decayDays={decayDays}
-                  onEdit={() => setEditing(spark)}
+                  onEdit={() => openEdit(spark)}
+                  onAddNextStep={() => openEdit(spark, 'next')}
                   onDevelop={() => setDeveloping(spark)}
                   onPromote={!isPromoted(spark) ? () => setPromoting(spark) : undefined}
                   onArchive={() => handleArchive(spark)}
@@ -2001,7 +2025,7 @@ function Dashboard({
         ) : showWall ? (
           <PromotedWall
             sparks={filtered}
-            onEdit={setEditing}
+            onEdit={(spark) => openEdit(spark)}
             onDelete={setConfirmDelete}
           />
         ) : layout === 'home' ? (
